@@ -1,0 +1,23 @@
+{
+  "name": "かんじあつめ",
+  "short_name": "かんじ",
+  "description": "小学1年生の漢字80字をカードで覚える知育アプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#ffeede",
+  "theme_color": "#d2603a",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
