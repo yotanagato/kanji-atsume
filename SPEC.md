@@ -1,4 +1,4 @@
-# かんじあつめ（kanji-atsume）仕様
+# まなびあつめ（kanji-atsume）仕様
 
 小学1年生の配当漢字・英単語・九九を、**さかなつり／カード**の2つの遊びかたで覚える知育Webアプリ。
 こども向け。単一HTML完結・依存ゼロ・オフライン動作（PWA）。
@@ -31,6 +31,7 @@
 - 場所: `C:\Users\yotan\OneDrive\Desktop\claude\kanji-atsume\`
 - 構成: `index.html`（HTML/CSS/JS 全部入り）＋ `manifest.json` / `sw.js` / `icon-192.png` / `icon-512.png` / `README.md`
 - 公開: https://yotanagato.github.io/kanji-atsume/ （GitHub Pages / repo `yotanagato/kanji-atsume` / main のルート）
+- アプリ名は「まなびあつめ」。フォルダ名とURLは kanji-atsume のまま（ブックマークと Pages 設定を壊さないため）
 - dev server: `.claude/launch.json` の `kanji-atsume`（python http.server, port 8646）
 - 雛形: `eigo-yomi` / `tokei-gakushu`（sound・confetti・store・showScreen・ゲートを流用）、
   ねこ（ハチワレ）と魚の描画は `kanji-fishing/cat.js` `fish.js` から移植
@@ -100,7 +101,9 @@ canvas の描画中に例外が出ると requestAnimationFrame が止まり、
 ダミー（`kanjiDistractors()`）:
 
 - 同じ「なかま」の漢字を優先し、足りなければ他から補う
-- **かんじ→よみ では、同じ読みの漢字を除外する**（日と火、木と気 は答えが2つになってしまう）
+- **同じ読みの漢字は、かんじ→よみ でも よみ→かんじ でも除外する**。
+  「ひ」の選択肢に 火 と 日 が並ぶと、日 を選んでも正解なのに誤答になる（実機で発生）。
+  ことば問題だけは、熟語の中の1字なので答えが1つに決まるため除外しない
 - **ことば問題では、問題文にすでに出ている漢字を除外する**（`□ち上がる` の選択肢に `上` を出さない）
 
 **えいご**（`eigo-yomi` の語彙から、4択にならない機能語8語を除いた52語）
@@ -155,18 +158,44 @@ canvas の描画中に例外が出ると requestAnimationFrame が止まり、
 Web Speech API（日本語ボイス）。開発機には日本語4種（Ayumi / Haruka / Ichiro / Sayaka）が入っている。
 
 - 送りがなの括弧は読み上げ前に除去する（`はや(い)` → `はやい`）
-- 「よみ→かんじ」「ことば」は出題時に自動読み上げ（設定でOFF可）
-- 「かんじ→よみ」は**答え合わせのタイミングで**読む（出題時に読むと答えになってしまう）
+- 「よみ→かんじ」「ことば」「にほんご→えいご」は出題時に問題そのものを読む（設定でOFF可）
+- 問題そのものを読めない出題（かんじ→よみ／えいご→にほんご）は `speakJa` で
+  「なんて よむかな？」「どういう いみかな？」と**かけ声だけ**流す。無音の画面を作らない
+- 「かんじ→よみ」の読みは**答え合わせのタイミング**で流す（出題時に読むと答えになる）
+- 九九の正解時は `speakAfter` で**答えだけ**を読む（式を繰り返さない）
 
 ## 保存
 
 `localStorage["kanji-data"]` の1キーのみ。`{ stars, stamps, box, stat, days, settings }`。
 設定（読み上げON/OFF・速さ・声・選んだレベル/なかま/出題タイプ）も同じキーに入る。
 
-## おとなゲート → せってい
+## ホームと せってい
 
-ホームの「おとなのひと」→ 一桁の足し算に正解すると設定画面。
-設定は 読み上げON/OFF・はやさ・こえ・データ全消去（2回タップで確定）。
+**ホームは子どもが使う画面**なので、はじめる／にがて／ずかん／きろく／おとなのひと だけ。
+出題の設定（あそびかた・なにをやる・どのかんじ・どのだん・もんだいのかたち・もんだいすう）は
+**すべて「おとなのひと」ゲートの内側**（せってい画面の `#option-block`）に置く。
+`#option-block` は `renderSettings()` が中身を書き換える `#settings-body` の外に置くこと。
+
+せっていは他に 読み上げON/OFF・はやさ・こえ・版の確認と再読み込み・データ全消去（2回タップで確定）。
+
+## 版の管理とキャッシュ（iOS 対策）
+
+iOS のホーム画面アプリは、いちど掴んだ版をなかなか手放さない。そのため：
+
+- `index.html` の `APP_VERSION` / `version.json` / `sw.js` の `CACHE` の**3つを必ず同じ値**にする。
+  **`python bump-version.py` を push の前に実行する**（3ファイルをまとめて書き換える）。
+  ズレていると、起動のたびに「古い」と判断して読み直しを繰り返す
+- 起動0.8秒後に `version.json` を `cache:"no-store"` で取りに行き、`APP_VERSION` と違えば
+  キャッシュを全部消して Service Worker を unregister し、`?v=<時刻>` を付けて読み直す
+- 読み直しても直らない場合の無限ループを避けるため、`sessionStorage` に1回だけの印を付ける
+- せってい画面に現在の版と「さいしんを よみこむ」ボタン（手動で同じ処理を走らせる）
+- `navigator.serviceWorker.register(..., { updateViaCache: "none" })`。
+  これが無いと sw.js 自体がキャッシュから読まれて、古い版が居座る
+
+## おとなゲート
+
+**2けた×1けたのかけ算を、数字キーで入力**させる。
+選択式の一桁たし算にしていたら、子どもが自力で通り抜けてしまった。
 
 ## 公開（GitHub Pages）
 
