@@ -176,6 +176,34 @@
   }
   .q-bar .q-num { font-size: clamp(34px, 10vw, 52px); }
   .choice .num { font-size: clamp(40px, 12vw, 64px); font-weight: bold; }
+  .q-en {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(40px, 12vw, 66px); font-weight: bold; color: #3a3226; letter-spacing: 0.01em;
+  }
+  .q-bar .q-en { font-size: clamp(30px, 9vw, 48px); }
+  .choice .en {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(24px, 7vw, 40px); font-weight: bold;
+  }
+
+  /* ===== えいご一覧 ===== */
+  #eigo-list { width: 100%; padding-bottom: 12px; }
+  .erow {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff; border: none; width: 100%;
+    border-radius: 16px; box-shadow: 0 3px 0 rgba(0,0,0,0.10);
+    padding: 8px 12px; margin-bottom: 7px; cursor: pointer; font-family: inherit;
+  }
+  .erow.b2 { background: #ddf0ff; box-shadow: 0 3px 0 #a8cfe8; }
+  .erow.b3 { background: linear-gradient(180deg, #fff2c4, #ffdf8a); box-shadow: 0 3px 0 #e0b84d; }
+  .erow.new { background: #f6efe4; }
+  .erow .ee { font-size: 26px; width: 32px; text-align: center; }
+  .erow .en {
+    font-family: "Segoe UI","Helvetica Neue",Arial,sans-serif;
+    font-size: 20px; font-weight: bold; color: #3a3226; width: 84px; text-align: left;
+  }
+  .erow .ja { flex: 1; font-size: 16px; color: #6b5a46; text-align: left; }
+  .erow .mk2 { font-size: 15px; white-space: nowrap; }
 
   /* ===== くく表 ===== */
   #kuku-table { width: 100%; display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding-bottom: 12px; }
@@ -303,7 +331,7 @@
   <!-- ============ ホーム ============ -->
   <div class="screen active" id="screen-home">
     <h1>かんじあつめ</h1>
-    <div class="subtitle">１ねんせいの かんじ ８０もじ</div>
+    <div class="subtitle">かんじ80もじ ・ えいご52ご ・ くく81</div>
 
     <div class="pick-label">あそびかた</div>
     <div class="chip-row" id="mode-chips"></div>
@@ -378,6 +406,7 @@
     <div class="zukan-legend" id="zukan-legend"></div>
     <div class="zukan-grid" id="zukan-grid"></div>
     <div id="kuku-table" hidden></div>
+    <div id="eigo-list" hidden></div>
   </div>
 
   <!-- ============ きろく ============ -->
@@ -515,6 +544,65 @@ const KANJI = [
   { k:"千", y:"せん", ys:["せん","ち"], e:"🔢", lv:4, g:"かず", w:[["千円","せんえん"],["千代がみ","ちよがみ"]] }
 ];
 
+/* ================================================================
+   英単語 52語（eigo-yomi の語彙から、4択にならない機能語を除いたもの）
+   say … 「1（いち）」のように、そのままでは読み上げが不自然な語の読み
+================================================================ */
+const EIGO = [
+  { en:"cat", ja:"ねこ", e:"🐱", c:"animal" },
+  { en:"dog", ja:"いぬ", e:"🐶", c:"animal" },
+  { en:"pig", ja:"ぶた", e:"🐷", c:"animal" },
+  { en:"cow", ja:"うし", e:"🐮", c:"animal" },
+  { en:"fox", ja:"きつね", e:"🦊", c:"animal" },
+  { en:"bug", ja:"むし", e:"🐛", c:"animal" },
+  { en:"hen", ja:"にわとり", e:"🐔", c:"animal" },
+  { en:"bee", ja:"はち", e:"🐝", c:"animal" },
+  { en:"sun", ja:"たいよう", e:"☀️", c:"nature" },
+  { en:"bus", ja:"バス", e:"🚌", c:"vehicle" },
+  { en:"car", ja:"くるま", e:"🚗", c:"vehicle" },
+  { en:"cup", ja:"コップ", e:"🥤", c:"thing" },
+  { en:"hat", ja:"ぼうし", e:"🎩", c:"thing" },
+  { en:"bed", ja:"ベッド", e:"🛏️", c:"thing" },
+  { en:"box", ja:"はこ", e:"📦", c:"thing" },
+  { en:"pen", ja:"ペン", e:"🖊️", c:"thing" },
+  { en:"bag", ja:"かばん", e:"🎒", c:"thing" },
+  { en:"key", ja:"かぎ", e:"🔑", c:"thing" },
+  { en:"map", ja:"ちず", e:"🗺️", c:"thing" },
+  { en:"egg", ja:"たまご", e:"🥚", c:"food" },
+  { en:"run", ja:"はしる", e:"🏃", c:"action" },
+  { en:"sit", ja:"すわる", e:"🪑", c:"action" },
+  { en:"cut", ja:"きる", e:"✂️", c:"action" },
+  { en:"eat", ja:"たべる", e:"🍽️", c:"action" },
+  { en:"jump", ja:"とぶ", e:"🤸", c:"action" },
+  { en:"hot", ja:"あつい", e:"🔥", c:"action" },
+  { en:"wet", ja:"ぬれた", e:"💧", c:"action" },
+  { en:"sad", ja:"かなしい", e:"😢", c:"action" },
+  { en:"red", ja:"あか", e:"🔴", c:"other" },
+  { en:"blue", ja:"あお", e:"🔵", c:"other" },
+  { en:"one", ja:"1（いち）", e:"1️⃣", c:"other", say:"いち" },
+  { en:"two", ja:"2（に）", e:"2️⃣", c:"other", say:"に" },
+  { en:"six", ja:"6（ろく）", e:"6️⃣", c:"other", say:"ろく" },
+  { en:"ten", ja:"10（じゅう）", e:"🔟", c:"other", say:"じゅう" },
+  { en:"toy", ja:"おもちゃ", e:"🧸", c:"thing" },
+  { en:"go", ja:"いく", e:"🚦", c:"word" },
+  { en:"see", ja:"みる", e:"👀", c:"word" },
+  { en:"fish", ja:"さかな", e:"🐟", c:"animal" },
+  { en:"bird", ja:"とり", e:"🐦", c:"animal" },
+  { en:"frog", ja:"かえる", e:"🐸", c:"animal" },
+  { en:"duck", ja:"あひる", e:"🦆", c:"animal" },
+  { en:"milk", ja:"ぎゅうにゅう", e:"🥛", c:"food" },
+  { en:"cake", ja:"ケーキ", e:"🍰", c:"food" },
+  { en:"apple", ja:"りんご", e:"🍎", c:"food" },
+  { en:"book", ja:"ほん", e:"📕", c:"thing" },
+  { en:"ball", ja:"ボール", e:"⚽", c:"thing" },
+  { en:"star", ja:"ほし", e:"⭐", c:"nature" },
+  { en:"moon", ja:"つき", e:"🌙", c:"nature" },
+  { en:"tree", ja:"き", e:"🌳", c:"nature" },
+  { en:"rain", ja:"あめ", e:"🌧️", c:"nature" },
+  { en:"hand", ja:"て", e:"✋", c:"other" },
+  { en:"train", ja:"でんしゃ", e:"🚃", c:"vehicle" }
+];
+
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
   { id: 1, label: "レベル1" },
@@ -530,6 +618,7 @@ const GROUPS = ["かず","しぜん","からだ","ひと","まち","うごき","
 ================================================================ */
 const SUBJECTS = [
   { id: "kanji", label: "✏️ かんじ" },
+  { id: "eigo",  label: "🔤 えいご" },
   { id: "kuku",  label: "✖️ くく" }
 ];
 
@@ -537,7 +626,9 @@ const QTYPES = [
   { id: "y2k",  subject: "kanji", label: "よみ→かんじ" },
   { id: "k2y",  subject: "kanji", label: "かんじ→よみ" },
   { id: "word", subject: "kanji", label: "ことば" },
-  { id: "mul",  subject: "kuku",  label: "かけざん" }
+  { id: "mul",   subject: "kuku", label: "かけざん" },
+  { id: "ja2en", subject: "eigo", label: "にほんご→えいご" },
+  { id: "en2ja", subject: "eigo", label: "えいご→にほんご" }
 ];
 
 // 数字のひらがな読み（読み上げ用）
@@ -567,6 +658,11 @@ function buildAllItems() {
       out.push({ id: "kanji:" + k.k + ":" + t.id, subject: "kanji", qtype: t.id, k: k });
     });
   });
+  EIGO.forEach(w => {
+    qtypesOf("eigo").forEach(t => {
+      out.push({ id: "eigo:" + w.en + ":" + t.id, subject: "eigo", qtype: t.id, w: w });
+    });
+  });
   for (let a = 1; a <= 9; a++) {
     for (let b = 1; b <= 9; b++) {
       out.push({ id: "kuku:" + a + "x" + b + ":mul", subject: "kuku", qtype: "mul", a: a, b: b });
@@ -577,7 +673,7 @@ function buildAllItems() {
 const ITEMS = buildAllItems();
 
 // 同じ見出し（同じ漢字）を1セットに何度も出さないためのキー
-function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.id); }
+function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.w ? item.w.en : item.id); }
 function itemsFor(subject, refName) {
   return ITEMS.filter(i => i.subject === subject && refKey(i) === subject + ":" + refName);
 }
@@ -747,6 +843,24 @@ function pickJaVoice() {
 }
 // 送りがなの ( ) は読み上げないで自然につなげる（「はや(い)」→「はやい」）
 function plainYomi(y) { return String(y).replace(/[()（）]/g, ""); }
+
+function enVoices() { return voicesCache.filter(v => v.lang && /^en/i.test(v.lang)); }
+function hasEnVoice() { return enVoices().length > 0; }
+// 英語ボイスが無い環境で日本語ボイスに英語を読ませると、
+// カタカナ読みになって学習の妨げになる。だから鳴らさない（eigo-yomi と同じ方針）
+function speakEn(text) {
+  if (!("speechSynthesis" in window)) return false;
+  const list = enVoices();
+  const v = list.find(x => /en[-_]US/i.test(x.lang)) || list[0];
+  if (!v) return false;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = Math.min(1, store.data.settings.rate);
+  u.voice = v;
+  speechSynthesis.speak(u);
+  return true;
+}
 
 function speak(text, force) {
   if (!("speechSynthesis" in window)) return false;
@@ -1033,6 +1147,42 @@ function makeQuestion(item, retry) {
   const q = { item: item, id: item.id, retry: !!retry, tries: 0 };
   if (item.subject === "kanji") return makeKanjiQuestion(q, item);
   if (item.subject === "kuku")  return makeKukuQuestion(q, item);
+  if (item.subject === "eigo")  return makeEigoQuestion(q, item);
+  return q;
+}
+
+function eigoDistractors(target, key, n) {
+  const same   = EIGO.filter(x => x.en !== target.en && x.c === target.c);
+  const others = EIGO.filter(x => x.en !== target.en && x.c !== target.c);
+  const cand = shuffle(same).concat(shuffle(others));
+  const out = [], used = {};
+  used[target[key]] = true;
+  for (const c of cand) {
+    if (used[c[key]]) continue;
+    used[c[key]] = true;
+    out.push(c);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+function makeEigoQuestion(q, it) {
+  const w = it.w;
+  if (it.qtype === "ja2en") {
+    q.label = "えいごで どれ？";
+    q.emoji = w.e;
+    q.main  = { text: w.ja, kind: "yomi" };
+    q.speak = w.say || w.ja;
+    q.choices = shuffle([mkChoice(w.en, "en", true)].concat(
+      eigoDistractors(w, "en", 3).map(x => mkChoice(x.en, "en", false))));
+  } else {
+    // 絵文字は答えそのものになってしまうので出さない
+    q.label = "どういう いみ？";
+    q.main  = { text: w.en, kind: "en" };
+    q.speakEn = w.en;
+    q.choices = shuffle([mkChoice(w.ja, "yomi", true)].concat(
+      eigoDistractors(w, "ja", 3).map(x => mkChoice(x.ja, "yomi", false))));
+  }
   return q;
 }
 
@@ -1109,11 +1259,15 @@ function itemCaption(item) {
   if (item.subject === "kuku") {
     return item.a + " × " + item.b + " = " + (item.a * item.b);
   }
+  if (item.subject === "eigo") {
+    return item.w.en + " ＝ " + item.w.ja;
+  }
   return "";
 }
 function itemHead(item) {
   if (item.subject === "kanji") return item.k.k;
   if (item.subject === "kuku")  return item.a + "×" + item.b;
+  if (item.subject === "eigo")  return item.w.e;
   return "";
 }
 
@@ -1182,7 +1336,9 @@ function fillPrompt(box, q) {
     box.appendChild(w);
   } else if (q.main) {
     const m = document.createElement("div");
-    m.className = q.main.kind === "kanji" ? "q-kanji" : q.main.kind === "num" ? "q-num" : "q-yomi";
+    m.className = q.main.kind === "kanji" ? "q-kanji"
+                : q.main.kind === "num"   ? "q-num"
+                : q.main.kind === "en"    ? "q-en" : "q-yomi";
     m.textContent = q.main.text;
     box.appendChild(m);
   }
@@ -1196,6 +1352,12 @@ function fillPrompt(box, q) {
   if (q.speak) {
     box.appendChild(speakButton(q.speak));
     speak(q.speak);
+  } else if (q.speakEn && hasEnVoice()) {
+    const b = speakButton(q.speakEn);
+    b.onclick = null;
+    b.addEventListener("click", e => { e.stopPropagation(); speakEn(q.speakEn); });
+    box.appendChild(b);
+    speakEn(q.speakEn);
   }
 }
 
@@ -1208,7 +1370,10 @@ function speakButton(text) {
 }
 
 // まちがえたときに、出題の読み上げをもう一度（答えになる問題では鳴らさない）
-function repeatPrompt(q) { if (q.speak) speak(q.speak, true); }
+function repeatPrompt(q) {
+  if (q.speak) speak(q.speak, true);
+  else if (q.speakEn) speakEn(q.speakEn);
+}
 
 function renderQuestion() {
   const q = session.queue[session.idx];
@@ -1289,7 +1454,7 @@ function renderCardQuestion(q) {
     const b = document.createElement("button");
     b.className = "choice";
     const span = document.createElement("span");
-    span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : "yomi";
+    span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : c.kind === "en" ? "en" : "yomi";
     span.textContent = c.text;
     b.setAttribute("aria-label", c.text);
     b.appendChild(span);
@@ -1344,6 +1509,7 @@ const fishGame = (() => {
   function fishFont(text, kind) {
     if (kind === "kanji") return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
     if (kind === "num")   return 'bold 28px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
+    if (kind === "en")    return 'bold ' + (text.length <= 3 ? 26 : text.length <= 5 ? 23 : 20) + 'px "Segoe UI","Helvetica Neue",Arial,sans-serif';
     const n = text.length;
     const size = n <= 2 ? 25 : n <= 4 ? 22 : 18;
     return 'bold ' + size + 'px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
@@ -1818,14 +1984,87 @@ function renderZukan() {
     b.addEventListener("click", () => { sound.tap(); zukanTab = sub.id; renderZukan(); });
     tabs.appendChild(b);
   });
-  if (zukanTab === "kuku") renderZukanKuku();
-  else renderZukanKanji();
+  if (zukanTab === "kuku")      renderZukanKuku();
+  else if (zukanTab === "eigo") renderZukanEigo();
+  else                          renderZukanKanji();
+}
+
+function showZukanBox(which) {
+  document.getElementById("zukan-grid").hidden = which !== "kanji";
+  document.getElementById("kuku-table").hidden = which !== "kuku";
+  document.getElementById("eigo-list").hidden  = which !== "eigo";
+}
+
+function eigoProgress(w) {
+  return qtypesOf("eigo").map(t => {
+    const id = "eigo:" + w.en + ":" + t.id;
+    return { label: t.label, box: getBox(id), tried: !!store.data.stat[id] };
+  });
+}
+
+function renderZukanEigo() {
+  showZukanBox("eigo");
+  const box = document.getElementById("eigo-list");
+  box.innerHTML = "";
+  const done = ITEMS.filter(i => i.subject === "eigo" && getBox(i.id) === 3).length;
+  document.getElementById("zukan-legend").textContent =
+    "できた " + done + " ／ " + (EIGO.length * 2) + "マス（" + EIGO.length + "ご × 2）";
+
+  EIGO.forEach(w => {
+    const p = eigoProgress(w);
+    const n = p.filter(x => x.box === 3).length;
+    const row = document.createElement("button");
+    row.className = "erow " + (n === 2 ? "b3" : n === 1 ? "b2" : p.some(x => x.tried) ? "" : "new");
+    row.innerHTML =
+      '<span class="ee">' + w.e + '</span>' +
+      '<span class="en">' + w.en + '</span>' +
+      '<span class="ja">' + w.ja + '</span>' +
+      '<span class="mk2">' + p.map(x => x.box === 3 ? "⭐" : x.box === 2 ? "🔵" : x.tried ? "🔁" : "・").join(" ") + '</span>';
+    row.addEventListener("click", () => { sound.tap(); openEigoModal(w); });
+    box.appendChild(row);
+  });
+}
+
+function openEigoModal(w) {
+  const m = document.getElementById("modal");
+  m.innerHTML = "";
+  const em = document.createElement("div"); em.style.fontSize = "56px"; em.textContent = w.e;
+  const en = document.createElement("div");
+  en.className = "mk";
+  en.style.cssText = 'font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;font-size:clamp(40px,12vw,60px)';
+  en.textContent = w.en;
+  const ja = document.createElement("div"); ja.className = "my"; ja.textContent = w.ja;
+  m.appendChild(em); m.appendChild(en); m.appendChild(ja);
+
+  const tbl = document.createElement("div");
+  tbl.className = "mtypes";
+  eigoProgress(w).forEach(b => {
+    const row = document.createElement("div");
+    row.className = "mtype-row";
+    row.innerHTML = "<span>" + b.label + "</span><span>" +
+      (b.box === 3 ? "⭐" : b.box === 2 ? "🔵" : b.tried ? "🔁" : "・") + "</span>";
+    tbl.appendChild(row);
+  });
+  m.appendChild(tbl);
+
+  if (hasEnVoice()) {
+    const sp = document.createElement("button");
+    sp.className = "speak-btn"; sp.style.marginTop = "12px";
+    sp.textContent = "🔊 きく";
+    sp.addEventListener("click", () => speakEn(w.en));
+    m.appendChild(sp);
+  }
+  const cl = document.createElement("button");
+  cl.className = "big-btn btn-record"; cl.style.marginTop = "10px";
+  cl.textContent = "とじる";
+  cl.addEventListener("click", closeModal);
+  m.appendChild(cl);
+  document.getElementById("modal-back").classList.add("on");
 }
 
 function renderZukanKuku() {
-  document.getElementById("zukan-grid").hidden = true;
+  showZukanBox("kuku");
   const t = document.getElementById("kuku-table");
-  t.hidden = false;
   t.innerHTML = "";
   const done = ITEMS.filter(i => i.subject === "kuku" && getBox(i.id) === 3).length;
   document.getElementById("zukan-legend").textContent = "できた " + done + " ／ 81マス";
@@ -1882,7 +2121,8 @@ function openKukuModal(a, b) {
 }
 
 function renderZukanKanji() {
-  document.getElementById("kuku-table").hidden = true;
+  showZukanBox("kanji");
+  const grid = document.getElementById("zukan-grid");
   grid.innerHTML = "";
   const gold = KANJI.filter(k => kanjiProgress(k).done === 3).length;
   document.getElementById("zukan-legend").textContent =
