@@ -653,7 +653,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-12-5";
+const APP_VERSION = "2026-09-12-6";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -1559,8 +1559,8 @@ const fishGame = (() => {
     const band = H - waterY - 14;
     fishes.forEach((f, i) => {
       f.laneY = waterY + 10 + band * ((i + 0.5) / n);
-      f.minX = f.w / 2 + 24;   // 尾びれのぶんの余白
-      f.maxX = W - f.w / 2 - (f.laneY > H - 130 ? 124 : 24); // 下のレーンはねこを避ける
+      f.minX = f.w / 2 + 30;   // 尾びれのぶんの余白
+      f.maxX = W - f.w / 2 - (f.laneY > H - 130 ? 124 : 30); // 下のレーンはねこを避ける
       if (f.maxX < f.minX + 20) f.maxX = f.minX + 20;
       f.x = Math.min(Math.max(f.x, f.minX), f.maxX);
     });
@@ -1749,128 +1749,226 @@ const fishGame = (() => {
     ctx.scale(f.dir < 0 ? -1 : 1, 1);
 
     const color = f.state === "gone" ? "#90a4ae" : f.color;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, f.w / 2, f.h / 2, 0, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.28)";
+    const w = f.w, h = f.h;
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.lineJoin = "round";
 
+    // 二股の尾びれ
     ctx.beginPath();
-    ctx.moveTo(-f.w / 2 + 4, 0);
-    ctx.lineTo(-f.w / 2 - 20, -15);
-    ctx.lineTo(-f.w / 2 - 20, 15);
+    ctx.moveTo(-w / 2 + 6, 0);
+    ctx.lineTo(-w / 2 - 26, -20);
+    ctx.lineTo(-w / 2 - 12, 0);
+    ctx.lineTo(-w / 2 - 26, 20);
     ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillStyle = color; ctx.fill(); ctx.stroke();
 
+    // 背びれ
     ctx.beginPath();
-    ctx.ellipse(4, f.h / 2 - 4, 14, 8, Math.PI / 4, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+    ctx.moveTo(-10, -h / 2 + 4);
+    ctx.quadraticCurveTo(6, -h / 2 - 20, 24, -h / 2 + 2);
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.fill(); ctx.stroke();
 
+    // からだ
     ctx.beginPath();
-    ctx.arc(f.w / 2 - 14, -7, 6, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(f.w / 2 - 12, -7, 3.4, 0, Math.PI * 2);
-    ctx.fillStyle = "#333";
-    ctx.fill();
+    ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill(); ctx.stroke();
 
+    // しま模様（からだの中だけ）
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = "rgba(255,255,255,0.32)";
+    [-w * 0.22, w * 0.02, w * 0.26].forEach(x => {
+      ctx.save(); ctx.translate(x, 0); ctx.rotate(0.18);
+      ctx.fillRect(-4, -h, 8, h * 2);
+      ctx.restore();
+    });
+    ctx.restore();
+
+    // 胸びれ
+    ctx.beginPath();
+    ctx.ellipse(2, h / 2 - 3, 13, 7, Math.PI / 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill(); ctx.stroke();
+
+    // め
+    ctx.beginPath();
+    ctx.arc(w / 2 - 15, -8, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w / 2 - 13, -8, 3.6, 0, Math.PI * 2);
+    ctx.fillStyle = "#333"; ctx.fill();
+
+    // 字（向きは戻してから描く）
     ctx.scale(f.dir < 0 ? -1 : 1, 1);
     ctx.font = fishFont(f.text, f.kind);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
     ctx.shadowBlur = 4;
     ctx.fillText(f.text, 0, 2);
     ctx.shadowBlur = 0;
     ctx.restore();
   }
 
-  /* ---- ねこ（kanji-fishing の cat.js から移植・縮小） ---- */
+  /* ---- ねこ（おすわりハチワレ・ちび体型） ----
+     大きい丸あたま＋黒いぼうし＋まんなかの白い割れ＋ピンクのほっぺ。
+     表情は state（idle / happy / sad）で目と口だけを差し替える。 */
+  const CAT_DARK = "#4a4440", CAT_LINE = "#3f3a36", CAT_WHITE = "#fdfbf7", CAT_PINK = "#ffc2cd";
+
+  function drawCatFigure(ctx, state, blinking) {
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    // しっぽ
+    ctx.beginPath();
+    ctx.moveTo(26, 54);
+    ctx.quadraticCurveTo(68, 50, 58, 12);
+    ctx.strokeStyle = CAT_LINE; ctx.lineWidth = 13; ctx.stroke();
+    ctx.strokeStyle = CAT_WHITE; ctx.lineWidth = 9; ctx.stroke();
+
+    // からだ（おすわり）
+    ctx.beginPath();
+    ctx.moveTo(-30, 64);
+    ctx.quadraticCurveTo(-35, 26, -18, 13);
+    ctx.quadraticCurveTo(0, 5, 18, 13);
+    ctx.quadraticCurveTo(35, 26, 30, 64);
+    ctx.quadraticCurveTo(0, 73, -30, 64);
+    ctx.closePath();
+    ctx.fillStyle = CAT_WHITE; ctx.fill();
+    ctx.strokeStyle = CAT_LINE; ctx.lineWidth = 2.6; ctx.stroke();
+
+    // せなかの もよう
+    ctx.save();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(-27, 30, 21, 27, 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = CAT_DARK; ctx.fill();
+    ctx.restore();
+
+    // まえあし
+    [-14, 14].forEach(x => {
+      ctx.beginPath();
+      ctx.ellipse(x, 61, 11, 7.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = CAT_WHITE; ctx.fill();
+      ctx.strokeStyle = CAT_LINE; ctx.lineWidth = 2.2; ctx.stroke();
+    });
+
+    // みみ
+    [-1, 1].forEach(s => {
+      ctx.beginPath();
+      ctx.moveTo(s * 35, -32); ctx.lineTo(s * 31, -70); ctx.lineTo(s * 6, -49);
+      ctx.closePath();
+      ctx.fillStyle = CAT_DARK; ctx.fill();
+      ctx.strokeStyle = CAT_LINE; ctx.lineWidth = 2.4; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(s * 30, -39); ctx.lineTo(s * 28, -62); ctx.lineTo(s * 14, -49);
+      ctx.closePath();
+      ctx.fillStyle = CAT_PINK; ctx.fill();
+    });
+
+    // あたま
+    ctx.beginPath();
+    ctx.arc(0, -14, 42, 0, Math.PI * 2);
+    ctx.fillStyle = CAT_WHITE; ctx.fill();
+    ctx.strokeStyle = CAT_LINE; ctx.lineWidth = 2.6; ctx.stroke();
+
+    // 黒いぼうし（まんなかが白く割れる＝ハチワレ）
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -14, 42, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.moveTo(-46, -16);
+    ctx.quadraticCurveTo(-32, 6, -18, 1);
+    ctx.quadraticCurveTo(-7, -3, 0, -18);
+    ctx.quadraticCurveTo(7, -3, 18, 1);
+    ctx.quadraticCurveTo(32, 6, 46, -16);
+    ctx.lineTo(46, -62); ctx.lineTo(-46, -62);
+    ctx.closePath();
+    ctx.fillStyle = CAT_DARK; ctx.fill();
+    ctx.restore();
+
+    // ほっぺ
+    [-29, 29].forEach(x => {
+      ctx.beginPath();
+      ctx.ellipse(x, 19, 9.5, 6.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = CAT_PINK; ctx.fill();
+    });
+
+    // め
+    [-17, 17].forEach(x => {
+      if (blinking) {
+        ctx.beginPath();
+        ctx.moveTo(x - 7, 10); ctx.quadraticCurveTo(x, 13, x + 7, 10);
+        ctx.strokeStyle = "#2e2a28"; ctx.lineWidth = 2.6; ctx.stroke();
+        return;
+      }
+      if (state === "happy") {
+        // にっこり（^ ^）
+        ctx.beginPath();
+        ctx.moveTo(x - 8, 12); ctx.quadraticCurveTo(x, 2, x + 8, 12);
+        ctx.strokeStyle = "#2e2a28"; ctx.lineWidth = 3.2; ctx.stroke();
+        return;
+      }
+      const ry = state === "sad" ? 5.5 : 8;
+      ctx.beginPath();
+      ctx.ellipse(x, 9, 6.8, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#2e2a28"; ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x - 2.4, 6, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill();
+    });
+
+    // はな
+    ctx.beginPath();
+    ctx.moveTo(0, 17); ctx.lineTo(-3.6, 13.5); ctx.lineTo(3.6, 13.5);
+    ctx.closePath();
+    ctx.fillStyle = "#ff9aa8"; ctx.fill();
+
+    // くち
+    ctx.strokeStyle = "#3f3a36"; ctx.lineWidth = 2.2;
+    if (state === "happy") {
+      ctx.beginPath(); ctx.arc(0, 17, 8, 0.25, Math.PI - 0.25); ctx.stroke();
+    } else if (state === "sad") {
+      ctx.beginPath(); ctx.arc(0, 28, 8, Math.PI + 0.3, -0.3); ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-7, 19); ctx.quadraticCurveTo(-3.5, 23, 0, 19);
+      ctx.quadraticCurveTo(3.5, 23, 7, 19);
+      ctx.stroke();
+    }
+
+    // ひげ
+    ctx.strokeStyle = "rgba(80,70,60,0.45)"; ctx.lineWidth = 1.6;
+    [-1, 1].forEach(s => {
+      ctx.beginPath(); ctx.moveTo(s * 22, 14); ctx.lineTo(s * 45, 9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(s * 22, 19); ctx.lineTo(s * 45, 21); ctx.stroke();
+    });
+  }
+
   function updateCat() {
     if (cat.timer > 0) cat.timer--;
     cat.blinkT++;
-    if (cat.blinkT > 120) {
+    if (cat.blinkT > 150) {
       cat.blinking = true;
-      if (cat.blinkT > 126) { cat.blinking = false; cat.blinkT = 0; }
+      if (cat.blinkT > 158) { cat.blinking = false; cat.blinkT = 0; }
     }
     if (cat.bounce > 0) cat.bounce -= 0.5;
   }
 
   function drawCat() {
-    const s = 0.62;
-    const x = W - 56;
-    const y = H - 44 - Math.abs(Math.sin(Date.now() / 400)) * 4 - cat.bounce;
-
+    const s = 0.58;
+    const x = W - 62;
+    const y = H - 52 - Math.abs(Math.sin(Date.now() / 400)) * 4 - cat.bounce;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(s, s);
-
-    ctx.beginPath(); ctx.ellipse(0, 35, 28, 35, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#f5f0e8"; ctx.fill();
-    ctx.strokeStyle = "#ccc"; ctx.lineWidth = 1.5; ctx.stroke();
-
-    ctx.beginPath(); ctx.arc(0, -10, 38, 0, Math.PI * 2);
-    ctx.fillStyle = "#f5f0e8"; ctx.fill(); ctx.stroke();
-
-    // ハチワレ模様
-    ctx.beginPath(); ctx.moveTo(0, -42); ctx.lineTo(-14, -18); ctx.lineTo(14, -18); ctx.closePath();
-    ctx.fillStyle = "#333"; ctx.fill();
-
-    [-1, 1].forEach(sd => {
-      ctx.beginPath();
-      ctx.moveTo(sd * 28, -40); ctx.lineTo(sd * 42, -65); ctx.lineTo(sd * 12, -48); ctx.closePath();
-      ctx.fillStyle = "#f5f0e8"; ctx.fill(); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(sd * 28, -44); ctx.lineTo(sd * 38, -62); ctx.lineTo(sd * 16, -50); ctx.closePath();
-      ctx.fillStyle = "#ffb3c1"; ctx.fill();
-    });
-
-    const eyeY = cat.state === "happy" ? -14 : -12;
-    const eyeOpen = cat.blinking ? 2 : (cat.state === "sad" ? 5 : 8);
-    [-14, 14].forEach(ex => {
-      ctx.beginPath(); ctx.ellipse(ex, eyeY, 7, eyeOpen, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "#333"; ctx.fill();
-    });
-    if (!cat.blinking) {
-      [[-12, eyeY - 2], [16, eyeY - 2]].forEach(p => {
-        ctx.beginPath(); ctx.arc(p[0], p[1], 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff"; ctx.fill();
-      });
-    }
-
-    ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(-5, -6); ctx.lineTo(5, -6); ctx.closePath();
-    ctx.fillStyle = "#ff9999"; ctx.fill();
-
-    ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (cat.state === "happy")     ctx.arc(0, 1, 10, 0.2, Math.PI - 0.2);
-    else if (cat.state === "sad")  ctx.arc(0, 10, 10, Math.PI + 0.2, -0.2);
-    else { ctx.moveTo(-8, 2); ctx.quadraticCurveTo(0, 6, 8, 2); }
-    ctx.stroke();
-
-    ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1.5;
-    [-1, 1].forEach(sd => {
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-        ctx.moveTo(sd * 10, -4 + i * 5);
-        ctx.lineTo(sd * 42, -8 + i * 6);
-        ctx.stroke();
-      }
-    });
-
-    ctx.beginPath(); ctx.moveTo(20, 60); ctx.quadraticCurveTo(55, 50, 50, 25);
-    ctx.strokeStyle = "#e0d8c8"; ctx.lineWidth = 8; ctx.lineCap = "round"; ctx.stroke();
-    ctx.strokeStyle = "#ccc"; ctx.lineWidth = 2; ctx.stroke();
-
+    drawCatFigure(ctx, cat.state, cat.blinking);
     ctx.restore();
-
     if (cat.timer > 0 && cat.speech) drawBubble(x, y);
   }
 
