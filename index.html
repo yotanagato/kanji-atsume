@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>かんじあつめ</title>
+<title>まなびあつめ</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
@@ -294,6 +294,11 @@
   .danger { background: linear-gradient(180deg,#ef9a9a,#e57373); }
   .gate-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; max-width: 300px; margin: 10px auto; }
   .gate-pad button { min-height: 62px; border: none; border-radius: 18px; background: #fff; font-family: inherit; font-size: 26px; font-weight: bold; color: #6b5a46; box-shadow: 0 4px 0 rgba(0,0,0,0.12); cursor: pointer; }
+  .gate-input {
+    text-align: center; font-size: 34px; font-weight: bold; color: #6b5a46;
+    background: #fff; border-radius: 16px; padding: 8px 0; margin: 4px auto 0;
+    width: 100%; max-width: 300px; letter-spacing: 0.1em; min-height: 54px;
+  }
   .gate-msg { text-align: center; color: #a0704a; font-size: 15px; margin-top: 8px; min-height: 22px; }
 
   /* ===== さかなつりモード ===== */
@@ -330,27 +335,8 @@
 
   <!-- ============ ホーム ============ -->
   <div class="screen active" id="screen-home">
-    <h1>かんじあつめ</h1>
+    <h1>まなびあつめ</h1>
     <div class="subtitle">かんじ80もじ ・ えいご52ご ・ くく81</div>
-
-    <div class="pick-label">あそびかた</div>
-    <div class="chip-row" id="mode-chips"></div>
-
-    <div class="pick-label" id="subject-label">なにを やる？</div>
-    <div class="chip-row" id="subject-chips"></div>
-
-    <div class="pick-label" id="kanji-label">どの かんじ？</div>
-    <div class="chip-row" id="level-chips"></div>
-    <div class="chip-row" id="group-chips"></div>
-
-    <div class="pick-label" id="dan-label">どの だん？</div>
-    <div class="chip-row" id="dan-chips"></div>
-
-    <div class="pick-label">もんだいの かたち</div>
-    <div class="chip-row" id="qtype-chips"></div>
-
-    <div class="pick-label">1かいの もんだいすう</div>
-    <div class="chip-row" id="size-chips"></div>
 
     <div class="pool-info" id="pool-info"></div>
 
@@ -426,8 +412,9 @@
       <div class="screen-title">おとなのひと</div>
       <div style="width:60px"></div>
     </div>
-    <p style="color:#6b5a46;text-align:center;margin-top:10px">こたえの かずを おしてね</p>
+    <p style="color:#6b5a46;text-align:center;margin-top:10px">こたえを 入力してください</p>
     <div class="result-big" id="gate-q"></div>
+    <div class="gate-input" id="gate-input">_</div>
     <div class="gate-pad" id="gate-pad"></div>
     <div class="gate-msg" id="gate-msg"></div>
   </div>
@@ -439,6 +426,29 @@
       <div class="screen-title">せってい</div>
       <div style="width:60px"></div>
     </div>
+    <div id="option-block" style="width:100%">
+      <div class="pick-label">あそびかた</div>
+      <div class="chip-row" id="mode-chips"></div>
+
+      <div class="pick-label" id="subject-label">なにを やる？</div>
+      <div class="chip-row" id="subject-chips"></div>
+
+      <div class="pick-label" id="kanji-label">どの かんじ？</div>
+      <div class="chip-row" id="level-chips"></div>
+      <div class="chip-row" id="group-chips"></div>
+
+      <div class="pick-label" id="dan-label">どの だん？</div>
+      <div class="chip-row" id="dan-chips"></div>
+
+      <div class="pick-label">もんだいの かたち</div>
+      <div class="chip-row" id="qtype-chips"></div>
+
+      <div class="pick-label">1かいの もんだいすう</div>
+      <div class="chip-row" id="size-chips"></div>
+
+      <div class="pool-info" id="pool-info2"></div>
+    </div>
+
     <div id="settings-body" style="width:100%"></div>
   </div>
 </div>
@@ -641,6 +651,9 @@ function numYomi(n) {
 }
 function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
+
+/* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
+const APP_VERSION = "2026-09-12-4";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -894,7 +907,7 @@ function showScreen(name) {
   if (name === "zukan")    renderZukan();
   if (name === "record")   renderRecord();
   if (name === "gate")     renderGate();
-  if (name === "settings") renderSettings();
+  if (name === "settings") { renderChips(); renderSettings(); }
   if (name === "home")     renderPoolInfo();
   document.querySelectorAll(".screen").forEach(s => s.scrollTop = 0);
 }
@@ -1080,8 +1093,10 @@ function doneCount() { return ITEMS.filter(i => getBox(i.id) === 3).length; }
 function renderPoolInfo() {
   const pool = buildPool();
   const rev = reviewPool();
-  document.getElementById("pool-info").textContent =
-    "いま " + pool.length + "マス ／ できた " + doneCount() + "／" + ITEMS.length;
+  const info = "いま " + pool.length + "マス ／ できた " + doneCount() + "／" + ITEMS.length;
+  document.getElementById("pool-info").textContent = info;
+  const info2 = document.getElementById("pool-info2");
+  if (info2) info2.textContent = info;
   const rb = document.getElementById("btn-review");
   rb.disabled = rev.length === 0;
   rb.innerHTML = rev.length === 0
@@ -1126,11 +1141,13 @@ function mkChoice(text, kind, correct) { return { text: text, kind: kind, correc
 // 紛らわしすぎない選択肢を選ぶ
 //   yomi … 同じ読みの漢字（日と火）は答えが2つになるので除外
 //   exclude … ことば問題で、問題文にすでに出ている漢字を除外
-function kanjiDistractors(target, kind, n, exclude) {
+function kanjiDistractors(target, kind, n, exclude, sameYomiOK) {
   const sameGroup = KANJI.filter(x => x.k !== target.k && x.g === target.g);
   const others    = KANJI.filter(x => x.k !== target.k && x.g !== target.g);
   let cand = shuffle(sameGroup).concat(shuffle(others));
-  if (kind === "yomi") cand = cand.filter(x => plainYomi(x.y) !== plainYomi(target.y));
+  // 読みが同じ漢字は、どちらを選んでも正しくなってしまうので外す。
+  // かんじ→よみ だけでなく **よみ→かんじ でも** 必要（「ひ」で 火 と 日 が並ぶと答えが2つ）
+  if (!sameYomiOK) cand = cand.filter(x => plainYomi(x.y) !== plainYomi(target.y));
   if (exclude) cand = cand.filter(x => exclude.indexOf(x.k) < 0);
   const out = [], used = {};
   for (const c of cand) {
@@ -1180,6 +1197,7 @@ function makeEigoQuestion(q, it) {
     q.label = "どういう いみ？";
     q.main  = { text: w.en, kind: "en" };
     q.speakEn = w.en;
+    q.speakJa = "どういう いみかな？";   // 英語ボイスが無い端末では、こちらだけ鳴る
     q.choices = shuffle([mkChoice(w.ja, "yomi", true)].concat(
       eigoDistractors(w, "ja", 3).map(x => mkChoice(x.ja, "yomi", false))));
   }
@@ -1218,7 +1236,7 @@ function makeKukuQuestion(q, it) {
   q.label = "こたえは？";
   q.main  = { text: it.a + " × " + it.b, kind: "num" };
   q.speak = numYomi(it.a) + " かける " + numYomi(it.b) + " は？";
-  q.speakAfter = numYomi(it.a) + " かける " + numYomi(it.b) + " は " + numYomi(ans);
+  q.speakAfter = numYomi(ans);   // 正解したら答えだけを言う
   q.choices = shuffle([mkChoice(String(ans), "num", true)].concat(
     numDistractors(ans, it.a, it.b, 3).map(v => mkChoice(String(v), "num", false))));
   return q;
@@ -1233,11 +1251,12 @@ function makeKanjiQuestion(q, it) {
     q.sub   = "「" + pair[1] + "」";
     q.speak = pair[1];
     q.choices = shuffle([mkChoice(k.k, "kanji", true)].concat(
-      kanjiDistractors(k, "kanji", 3, pair[0]).map(x => mkChoice(x.k, "kanji", false))));
+      kanjiDistractors(k, "kanji", 3, pair[0], true).map(x => mkChoice(x.k, "kanji", false))));
   } else if (it.qtype === "k2y") {
     q.label = "なんて よむ？";
     q.main  = { text: k.k, kind: "kanji" };
-    q.speakAfter = k.y;   // 出題時に読むと答えになるので、答え合わせで読む
+    q.speakJa = "なんて よむかな？";   // 漢字そのものを読むと答えになるので、かけ声だけ
+    q.speakAfter = k.y;                 // 読みは答え合わせのときに聞かせる
     q.choices = shuffle([mkChoice(k.y, "yomi", true)].concat(
       kanjiDistractors(k, "yomi", 3).map(x => mkChoice(x.y, "yomi", false))));
   } else {
@@ -1358,6 +1377,9 @@ function fillPrompt(box, q) {
     b.addEventListener("click", e => { e.stopPropagation(); speakEn(q.speakEn); });
     box.appendChild(b);
     speakEn(q.speakEn);
+  } else if (q.speakJa) {
+    box.appendChild(speakButton(q.speakJa));
+    speak(q.speakJa);
   }
 }
 
@@ -1372,7 +1394,8 @@ function speakButton(text) {
 // まちがえたときに、出題の読み上げをもう一度（答えになる問題では鳴らさない）
 function repeatPrompt(q) {
   if (q.speak) speak(q.speak, true);
-  else if (q.speakEn) speakEn(q.speakEn);
+  else if (q.speakEn && hasEnVoice()) speakEn(q.speakEn);
+  else if (q.speakJa) speak(q.speakJa, true);
 }
 
 function renderQuestion() {
@@ -2287,29 +2310,43 @@ function renderRecord() {
 /* ================================================================
    おとなゲート → せってい
 ================================================================ */
-let gateAnswer = 0;
+/* おとなゲート
+   選択式の一桁たし算だと子どもが通り抜けてしまうので、
+   2けた×1けたを「数字を打って」答えてもらう */
+let gateAnswer = 0, gateInput = "";
+
 function renderGate() {
-  const a = 3 + Math.floor(Math.random() * 7);
-  const b = 3 + Math.floor(Math.random() * 7);
-  gateAnswer = a + b;
-  document.getElementById("gate-q").textContent = a + " + " + b + " = ?";
+  const a = 12 + Math.floor(Math.random() * 18);   // 12〜29
+  const b = 3 + Math.floor(Math.random() * 7);     // 3〜9
+  gateAnswer = a * b;
+  gateInput = "";
+  document.getElementById("gate-q").textContent = a + " × " + b + " = ?";
   document.getElementById("gate-msg").textContent = "";
+  updateGateInput();
+
   const pad = document.getElementById("gate-pad");
   pad.innerHTML = "";
-  const nums = new Set([gateAnswer]);
-  while (nums.size < 9) {
-    const n = 6 + Math.floor(Math.random() * 13);
-    nums.add(n);
-  }
-  shuffle(Array.from(nums)).forEach(n => {
+  ["1","2","3","4","5","6","7","8","9","←","0","OK"].forEach(key => {
     const btn = document.createElement("button");
-    btn.textContent = n;
-    btn.addEventListener("click", () => {
-      if (n === gateAnswer) showScreen("settings");
-      else { document.getElementById("gate-msg").textContent = "ちがうみたい"; renderGate(); }
-    });
+    btn.textContent = key;
+    if (key === "OK") btn.style.color = "#43a865";
+    btn.addEventListener("click", () => onGateKey(key));
     pad.appendChild(btn);
   });
+}
+
+function updateGateInput() {
+  document.getElementById("gate-input").textContent = gateInput === "" ? "_" : gateInput;
+}
+
+function onGateKey(key) {
+  if (key === "←") { gateInput = gateInput.slice(0, -1); updateGateInput(); return; }
+  if (key === "OK") {
+    if (parseInt(gateInput, 10) === gateAnswer) showScreen("settings");
+    else { document.getElementById("gate-msg").textContent = "ちがいます"; renderGate(); }
+    return;
+  }
+  if (gateInput.length < 3) { gateInput += key; updateGateInput(); }
 }
 
 /* ================================================================
@@ -2367,6 +2404,21 @@ function renderSettings() {
   c1.appendChild(r3);
   body.appendChild(c1);
 
+  const cv = document.createElement("div");
+  cv.className = "card";
+  cv.innerHTML = "<h3>バージョン</h3>" +
+    '<div style="font-size:15px;color:#6b5a46;margin-bottom:8px">いまの バージョン: <b>' + APP_VERSION + "</b></div>";
+  const up = document.createElement("button");
+  up.className = "big-btn btn-review";
+  up.textContent = "さいしんを よみこむ";
+  up.addEventListener("click", async () => {
+    up.textContent = "よみこんでいます…";
+    up.disabled = true;
+    await hardRefresh();
+  });
+  cv.appendChild(up);
+  body.appendChild(cv);
+
   const c2 = document.createElement("div");
   c2.className = "card";
   c2.innerHTML = "<h3>データ</h3>" +
@@ -2404,8 +2456,45 @@ renderChips();
 renderPoolInfo();
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  window.addEventListener("load", () => {
+    // updateViaCache:"none" … sw.js 自体がキャッシュから読まれると、いつまでも古い版が居座る
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
+  });
 }
+
+/* ================================================================
+   版の確認と読み直し
+   iOS のホーム画面アプリは、いちど掴んだ版をなかなか手放さない。
+   起動のたびに version.json（キャッシュ禁止）を見て、
+   自分の APP_VERSION と違っていたらキャッシュを捨てて読み直す。
+================================================================ */
+async function hardRefresh() {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {}
+  location.replace(location.pathname + "?v=" + Date.now());
+}
+
+async function checkVersion() {
+  try {
+    const r = await fetch("version.json?cb=" + Date.now(), { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.v || j.v === APP_VERSION) return;
+    // 読み直したのにまだ古い、という無限ループを避ける（1タブ1回だけ）
+    const guard = "vcheck:" + j.v;
+    if (sessionStorage.getItem(guard)) return;
+    sessionStorage.setItem(guard, "1");
+    await hardRefresh();
+  } catch (e) {}
+}
+window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
 </body>
 </html>

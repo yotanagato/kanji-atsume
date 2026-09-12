@@ -1,7 +1,7 @@
 {
-  "name": "かんじあつめ",
-  "short_name": "かんじ",
-  "description": "小学1年生の漢字80字をカードで覚える知育アプリ",
+  "name": "まなびあつめ",
+  "short_name": "まなび",
+  "description": "小学1年生の漢字・英単語・九九を、さかなつりとカードで覚える知育アプリ",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
