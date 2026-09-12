@@ -564,6 +564,7 @@ function shuffle(arr) {
 ================================================================ */
 const sound = {
   ctx: null,
+  unlocked: false,
   ensure() {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -571,6 +572,23 @@ const sound = {
     }
     if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
     return this.ctx;
+  },
+  // iOS Safari 対策。
+  //  ・AudioContext は必ず「指で触った瞬間」に作って resume しないと、以後ずっと無音になる
+  //  ・audioSession.type = "playback" を指定しないと、着信スイッチ（マナーモード）で
+  //    WebAudio だけ消される（読み上げは鳴るのに効果音が鳴らない、という状態になる）
+  unlock() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    const ctx = this.ensure();
+    if (!ctx) return;
+    if (this.unlocked) return;
+    this.unlocked = true;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch (e) {}
   },
   tone(freq, start, dur, type, vol) {
     const ctx = this.ctx;
@@ -595,6 +613,13 @@ const sound = {
     [523, 659, 784, 1047].forEach((f, i) => this.tone(f, i * 0.12, 0.35, "triangle", 0.22));
   }
 };
+
+["pointerdown", "touchend", "click"].forEach(ev => {
+  document.addEventListener(ev, () => sound.unlock(), { passive: true });
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && sound.ctx && sound.ctx.state === "suspended") sound.ctx.resume();
+});
 
 /* ================================================================
    よみあげ（Web Speech API・日本語ボイス）
@@ -1051,10 +1076,13 @@ const fishGame = (() => {
   let W = 0, H = 0, waterY = 0, t0 = Date.now();
   const cat = { state: "idle", speech: "", timer: 0, bounce: 0, blinkT: 0, blinking: false };
 
-  function fishFont(text) {
-    return text.length <= 1
-      ? 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif'
-      : 'bold 19px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
+  // 漢字は明朝、よみはまるゴシック。
+  // 文字数で切り替えると「て」と「ちから」で書体が変わってしまうので、種類で決める
+  function fishFont(text, isKanji) {
+    if (isKanji) return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
+    const n = text.length;
+    const size = n <= 2 ? 25 : n <= 4 ? 22 : 18;
+    return 'bold ' + size + 'px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
   }
 
   function resize() {
@@ -1075,7 +1103,7 @@ const fishGame = (() => {
     fishes.forEach((f, i) => {
       f.laneY = waterY + 10 + band * ((i + 0.5) / n);
       f.minX = f.w / 2 + 24;   // 尾びれのぶんの余白
-      f.maxX = W - f.w / 2 - (f.laneY > H - 120 ? 108 : 24); // 下のレーンはねこを避ける
+      f.maxX = W - f.w / 2 - (f.laneY > H - 130 ? 124 : 24); // 下のレーンはねこを避ける
       if (f.maxX < f.minX + 20) f.maxX = f.minX + 20;
       f.x = Math.min(Math.max(f.x, f.minX), f.maxX);
     });
@@ -1084,12 +1112,13 @@ const fishGame = (() => {
   function start(q) {
     resize();
     particles = [];
+    const isKanji = q.type !== "k2y";
     fishes = q.choices.map((c, i) => {
       const text = q.type === "k2y" ? c.y : c.k;
-      ctx.font = fishFont(text);
+      ctx.font = fishFont(text, isKanji);
       const w = Math.max(86, Math.round(ctx.measureText(text).width) + 54);
       return {
-        choice: c, text: text,
+        choice: c, text: text, isKanji: isKanji,
         w: w, h: Math.round(w * 0.58),
         x: 0, laneY: 0, phase: Math.random() * Math.PI * 2,
         speed: 0.45 + Math.random() * 0.6,
@@ -1296,7 +1325,7 @@ const fishGame = (() => {
     ctx.fill();
 
     ctx.scale(f.dir < 0 ? -1 : 1, 1);
-    ctx.font = fishFont(f.text);
+    ctx.font = fishFont(f.text, f.isKanji);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
