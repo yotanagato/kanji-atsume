@@ -171,6 +171,15 @@
   .dot.done { background: #ffb84d; box-shadow: none; }
   .dot.now  { background: #d2603a; box-shadow: 0 0 0 3px #ffd9c0; }
 
+  .progress-num { font-size: 16px; font-weight: bold; color: #a0704a; padding: 2px 0; }
+
+  .mtypes { margin: 10px 0 2px; border-top: 1px dashed #f0e0cc; }
+  .mtype-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 15px; color: #6b5a46; padding: 6px 4px; border-bottom: 1px dashed #f0e0cc;
+  }
+  .mtype-row span:last-child { font-size: 17px; }
+
   /* ===== けっか ===== */
   .result-big { font-size: clamp(30px, 8vw, 46px); font-weight: bold; color: #d2603a; margin: 10px 0 4px; text-align: center; }
   .result-stars { font-size: clamp(30px, 8vw, 44px); margin: 6px 0; text-align: center; word-break: break-all; }
@@ -279,12 +288,18 @@
     <div class="pick-label">あそびかた</div>
     <div class="chip-row" id="mode-chips"></div>
 
-    <div class="pick-label">どの かんじ？</div>
+    <div class="pick-label" id="subject-label">なにを やる？</div>
+    <div class="chip-row" id="subject-chips"></div>
+
+    <div class="pick-label" id="kanji-label">どの かんじ？</div>
     <div class="chip-row" id="level-chips"></div>
     <div class="chip-row" id="group-chips"></div>
 
     <div class="pick-label">もんだいの かたち</div>
     <div class="chip-row" id="qtype-chips"></div>
+
+    <div class="pick-label">1かいの もんだいすう</div>
+    <div class="chip-row" id="size-chips"></div>
 
     <div class="pool-info" id="pool-info"></div>
 
@@ -483,27 +498,67 @@ const LEVELS = [
   { id: 4, label: "レベル4" }
 ];
 const GROUPS = ["かず","しぜん","からだ","ひと","まち","うごき","いろ"];
-const QTYPES = [
-  { id: "y2k", label: "よみ→かんじ" },
-  { id: "k2y", label: "かんじ→よみ" },
-  { id: "word", label: "ことば" }
+
+/* ================================================================
+   教科と出題タイプ
+   ここに足せば、あとは共通の「マス（item）」の仕組みに乗る
+================================================================ */
+const SUBJECTS = [
+  { id: "kanji", label: "かんじ" }
 ];
 
-const SET_SIZE = 5;
+const QTYPES = [
+  { id: "y2k",  subject: "kanji", label: "よみ→かんじ" },
+  { id: "k2y",  subject: "kanji", label: "かんじ→よみ" },
+  { id: "word", subject: "kanji", label: "ことば" }
+];
+function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
+function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
+
+const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
 const STAMP_POOL = ["🐶","🐱","🐰","🦊","🐻","🐼","🐯","🦁","🐸","🐵","🐷","🐥","🦄","🐙","🐬","🦋","🚀","⚽","🍩","🍓","🍕","🎈","🎸","🏆"];
+
+/* ================================================================
+   マス（item）＝ おぼえた/おぼえていない を管理する最小単位
+   漢字は「1字 × 出題タイプ3つ」で3マス。80字なので240マスになる。
+   id がそのまま保存キー。 例) "kanji:山:y2k"
+================================================================ */
+function buildAllItems() {
+  const out = [];
+  KANJI.forEach(k => {
+    qtypesOf("kanji").forEach(t => {
+      out.push({ id: "kanji:" + k.k + ":" + t.id, subject: "kanji", qtype: t.id, k: k });
+    });
+  });
+  return out;
+}
+const ITEMS = buildAllItems();
+
+// 同じ見出し（同じ漢字）を1セットに何度も出さないためのキー
+function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.id); }
+function itemsFor(subject, refName) {
+  return ITEMS.filter(i => i.subject === subject && refKey(i) === subject + ":" + refName);
+}
 
 /* ================================================================
    保存データ
    kanji-data … 成績・設定（1キーのみ。壊れても他に波及しない）
 ================================================================ */
+const DATA_VERSION = 2;   // 1→2 で「漢字ごと」から「マスごと」に変えた
+
 const DEFAULT_DATA = {
+  ver: DATA_VERSION,
   stars: 0,
   stamps: [],
-  box: {},          // 漢字 -> 1..3（ライトナー箱）
-  stat: {},         // 漢字 -> { ok, ng }
+  box: {},          // マスid -> 1..3（ライトナー箱）
+  stat: {},         // マスid -> { ok, ng }
   days: {},         // "YYYY-MM-DD" -> { total, ok }
-  settings: { speak: true, rate: 0.9, voiceURI: "", mode: "fish", lv: 0, grp: "", qtypes: ["y2k","k2y","word"] }
+  settings: {
+    speak: true, rate: 0.9, voiceURI: "", mode: "fish",
+    subjects: ["kanji"], qtypes: ["y2k","k2y","word"],
+    lv: 0, grp: "", setSize: 5
+  }
 };
 
 const store = {
@@ -515,6 +570,17 @@ const store = {
     this.data.settings = Object.assign({}, DEFAULT_DATA.settings, (d && d.settings) || {});
     if (!Array.isArray(this.data.settings.qtypes) || this.data.settings.qtypes.length === 0) {
       this.data.settings.qtypes = ["y2k","k2y","word"];
+    }
+    if (!Array.isArray(this.data.settings.subjects) || this.data.settings.subjects.length === 0) {
+      this.data.settings.subjects = ["kanji"];
+    }
+    // 箱の持ち方（キーの形）が変わったので、古い記録は作り直す。
+    // 星・スタンプ・日別記録は残す
+    if (this.data.ver !== DATA_VERSION) {
+      this.data.box = {};
+      this.data.stat = {};
+      this.data.ver = DATA_VERSION;
+      this.save();
     }
   },
   save() { try { localStorage.setItem("kanji-data", JSON.stringify(this.data)); } catch (e) {} },
@@ -533,9 +599,8 @@ const store = {
 store.load();
 
 function findKanji(k) { return KANJI.find(x => x.k === k); }
-function getBox(k) { return store.data.box[k] || 1; }
-function isSeen(k) { return !!store.data.stat[k]; }
-function statOf(k) { return store.data.stat[k] || { ok: 0, ng: 0 }; }
+function getBox(id) { return store.data.box[id] || 1; }
+function statOf(id) { return store.data.stat[id] || { ok: 0, ng: 0 }; }
 
 function maybeAwardStamp() {
   const earned = Math.floor(store.data.stars / STARS_PER_STAMP);
@@ -741,61 +806,108 @@ function renderChips() {
     mBox.appendChild(b);
   });
 
+  // 教科（1つしかないうちは出さない）
+  const sBox = document.getElementById("subject-chips");
+  const sLabel = document.getElementById("subject-label");
+  sBox.innerHTML = "";
+  sBox.hidden = sLabel.hidden = SUBJECTS.length < 2;
+  if (SUBJECTS.length >= 2) {
+    SUBJECTS.forEach(sub => {
+      const on = s.subjects.includes(sub.id);
+      const b = document.createElement("button");
+      b.className = "chip" + (on ? " on" : "");
+      b.textContent = sub.label;
+      b.addEventListener("click", () => {
+        sound.tap();
+        if (on) { if (s.subjects.length > 1) s.subjects = s.subjects.filter(x => x !== sub.id); }
+        else s.subjects = s.subjects.concat([sub.id]);
+        store.save(); renderChips(); renderPoolInfo();
+      });
+      sBox.appendChild(b);
+    });
+  }
+
+  // 漢字を選んでいるときだけ、レベル・なかまを出す
+  const kanjiOn = s.subjects.includes("kanji");
+  document.getElementById("kanji-label").hidden = !kanjiOn;
   const lvBox = document.getElementById("level-chips");
-  lvBox.innerHTML = "";
-  LEVELS.forEach(l => {
-    const b = document.createElement("button");
-    b.className = "chip" + (s.lv === l.id ? " on" : "");
-    b.textContent = l.label;
-    b.addEventListener("click", () => { sound.tap(); s.lv = l.id; store.save(); renderChips(); renderPoolInfo(); });
-    lvBox.appendChild(b);
-  });
+  const gBox  = document.getElementById("group-chips");
+  lvBox.hidden = gBox.hidden = !kanjiOn;
+  lvBox.innerHTML = ""; gBox.innerHTML = "";
+  if (kanjiOn) {
+    LEVELS.forEach(l => {
+      const b = document.createElement("button");
+      b.className = "chip" + (s.lv === l.id ? " on" : "");
+      b.textContent = l.label;
+      b.addEventListener("click", () => { sound.tap(); s.lv = l.id; store.save(); renderChips(); renderPoolInfo(); });
+      lvBox.appendChild(b);
+    });
+    [""].concat(GROUPS).forEach(g => {
+      const b = document.createElement("button");
+      b.className = "chip" + (s.grp === g ? " on" : "");
+      b.textContent = g === "" ? "なかま ぜんぶ" : g;
+      b.addEventListener("click", () => { sound.tap(); s.grp = g; store.save(); renderChips(); renderPoolInfo(); });
+      gBox.appendChild(b);
+    });
+  }
 
-  const gBox = document.getElementById("group-chips");
-  gBox.innerHTML = "";
-  [""].concat(GROUPS).forEach(g => {
-    const b = document.createElement("button");
-    b.className = "chip" + (s.grp === g ? " on" : "");
-    b.textContent = g === "" ? "なかま ぜんぶ" : g;
-    b.addEventListener("click", () => { sound.tap(); s.grp = g; store.save(); renderChips(); renderPoolInfo(); });
-    gBox.appendChild(b);
-  });
-
+  // 出題タイプ（選んでいる教科のぶんだけ）
   const qBox = document.getElementById("qtype-chips");
   qBox.innerHTML = "";
-  QTYPES.forEach(q => {
+  QTYPES.filter(t => s.subjects.includes(t.subject)).forEach(q => {
     const on = s.qtypes.includes(q.id);
     const b = document.createElement("button");
     b.className = "chip q" + (on ? " on" : "");
     b.textContent = q.label;
     b.addEventListener("click", () => {
       sound.tap();
-      if (on) {
-        if (s.qtypes.length > 1) s.qtypes = s.qtypes.filter(x => x !== q.id);
-      } else {
-        s.qtypes = s.qtypes.concat([q.id]);
-      }
+      if (on) { if (s.qtypes.length > 1) s.qtypes = s.qtypes.filter(x => x !== q.id); }
+      else s.qtypes = s.qtypes.concat([q.id]);
       store.save(); renderChips(); renderPoolInfo();
     });
     qBox.appendChild(b);
   });
+
+  // 1かいの もんだいすう
+  const zBox = document.getElementById("size-chips");
+  zBox.innerHTML = "";
+  SET_SIZES.forEach(n => {
+    const b = document.createElement("button");
+    b.className = "chip" + (s.setSize === n ? " on" : "");
+    b.textContent = n + "もん";
+    b.addEventListener("click", () => { sound.tap(); s.setSize = n; store.save(); renderChips(); renderPoolInfo(); });
+    zBox.appendChild(b);
+  });
 }
 
+/* ================================================================
+   出題するマスを選ぶ
+================================================================ */
 function buildPool() {
   const s = store.data.settings;
-  return KANJI.filter(x => (s.lv === 0 || x.lv === s.lv) && (s.grp === "" || x.g === s.grp));
+  return ITEMS.filter(i => {
+    if (!s.subjects.includes(i.subject)) return false;
+    if (!s.qtypes.includes(i.qtype)) return false;
+    if (i.subject === "kanji") {
+      if (s.lv !== 0 && i.k.lv !== s.lv) return false;
+      if (s.grp !== "" && i.k.g !== s.grp) return false;
+    }
+    return true;
+  });
 }
+
+// にがて＝箱1にいて、1回でもまちがえたマス（絞り込みは無視して全部から拾う）
 function reviewPool() {
-  // にがて＝箱1にいて、1回でもまちがえた漢字
-  const list = KANJI.filter(x => getBox(x.k) === 1 && statOf(x.k).ng > 0);
-  return list;
+  return ITEMS.filter(i => getBox(i.id) === 1 && statOf(i.id).ng > 0);
 }
+
+function doneCount() { return ITEMS.filter(i => getBox(i.id) === 3).length; }
+
 function renderPoolInfo() {
   const pool = buildPool();
   const rev = reviewPool();
-  const done = KANJI.filter(x => getBox(x.k) === 3).length;
   document.getElementById("pool-info").textContent =
-    "この なかまは " + pool.length + "もじ ／ おぼえた " + done + "／" + KANJI.length;
+    "いま " + pool.length + "マス ／ できた " + doneCount() + "／" + ITEMS.length;
   const rb = document.getElementById("btn-review");
   rb.disabled = rev.length === 0;
   rb.innerHTML = rev.length === 0
@@ -804,41 +916,49 @@ function renderPoolInfo() {
   document.querySelectorAll(".star-num").forEach(e => e.textContent = store.data.stars);
 }
 
-/* ================================================================
-   出題
-================================================================ */
-function weightOf(k) {
-  const b = getBox(k.k);
+function weightOf(item) {
+  const b = getBox(item.id);
   return b === 1 ? 6 : b === 2 ? 3 : 1;
 }
-function pickKanji(pool, n) {
+
+// 苦手なマスほど当たりやすく。ただし同じ見出し（同じ漢字）は
+// 候補がある限り1セットに1回までにする（同じ字が続くと飽きるため）
+function pickItems(pool, n) {
   const rest = pool.slice();
   const out = [];
+  let used = {};
   while (out.length < n && rest.length > 0) {
+    let cand = rest.filter(i => !used[refKey(i)]);
+    if (cand.length === 0) { used = {}; cand = rest.slice(); }
     let total = 0;
-    for (const k of rest) total += weightOf(k);
+    for (const i of cand) total += weightOf(i);
     let r = Math.random() * total;
-    let idx = 0;
-    for (let i = 0; i < rest.length; i++) {
-      r -= weightOf(rest[i]);
-      if (r <= 0) { idx = i; break; }
-    }
-    out.push(rest.splice(idx, 1)[0]);
+    let pick = cand[cand.length - 1];
+    for (const i of cand) { r -= weightOf(i); if (r <= 0) { pick = i; break; } }
+    out.push(pick);
+    used[refKey(pick)] = true;
+    rest.splice(rest.indexOf(pick), 1);
   }
   return out;
 }
 
-// 答えの漢字と紛らわしすぎない選択肢を3つ選ぶ
-//   yomi … 同じ読みの漢字（日と火 など）は答えが2つになるので除外
+/* ================================================================
+   マス → 問題
+   ここから先（描画・判定）は choice.text / choice.kind / choice.correct しか見ない。
+   教科を足すときは make〇〇Question を書いて makeQuestion から呼ぶだけでよい。
+================================================================ */
+function mkChoice(text, kind, correct) { return { text: text, kind: kind, correct: !!correct }; }
+
+// 紛らわしすぎない選択肢を選ぶ
+//   yomi … 同じ読みの漢字（日と火）は答えが2つになるので除外
 //   exclude … ことば問題で、問題文にすでに出ている漢字を除外
-function distractors(target, kind, n, exclude) {
+function kanjiDistractors(target, kind, n, exclude) {
   const sameGroup = KANJI.filter(x => x.k !== target.k && x.g === target.g);
   const others    = KANJI.filter(x => x.k !== target.k && x.g !== target.g);
   let cand = shuffle(sameGroup).concat(shuffle(others));
   if (kind === "yomi") cand = cand.filter(x => plainYomi(x.y) !== plainYomi(target.y));
   if (exclude) cand = cand.filter(x => exclude.indexOf(x.k) < 0);
-  const out = [];
-  const used = {};
+  const out = [], used = {};
   for (const c of cand) {
     const key = kind === "yomi" ? plainYomi(c.y) : c.k;
     if (used[key]) continue;
@@ -849,17 +969,47 @@ function distractors(target, kind, n, exclude) {
   return out;
 }
 
-function makeQuestion(k, type, retry) {
-  if (type === "word") {
-    const pair = k.w[Math.floor(Math.random() * k.w.length)];
-    return { type, k, retry: !!retry, word: pair[0], wordYomi: pair[1],
-             choices: shuffle([k].concat(distractors(k, "kanji", 3, pair[0]))) };
-  }
-  if (type === "k2y") {
-    return { type, k, retry: !!retry, choices: shuffle([k].concat(distractors(k, "yomi", 3))) };
-  }
-  return { type: "y2k", k, retry: !!retry, choices: shuffle([k].concat(distractors(k, "kanji", 3))) };
+function makeQuestion(item, retry) {
+  const q = { item: item, id: item.id, retry: !!retry, tries: 0 };
+  if (item.subject === "kanji") return makeKanjiQuestion(q, item);
+  return q;
 }
+
+function makeKanjiQuestion(q, it) {
+  const k = it.k;
+  if (it.qtype === "word") {
+    const pair = k.w[Math.floor(Math.random() * k.w.length)];
+    q.label = "□に はいる かんじは？";
+    q.word  = { text: pair[0], target: k.k };
+    q.sub   = "「" + pair[1] + "」";
+    q.speak = pair[1];
+    q.choices = shuffle([mkChoice(k.k, "kanji", true)].concat(
+      kanjiDistractors(k, "kanji", 3, pair[0]).map(x => mkChoice(x.k, "kanji", false))));
+  } else if (it.qtype === "k2y") {
+    q.label = "なんて よむ？";
+    q.main  = { text: k.k, kind: "kanji" };
+    q.speakAfter = k.y;   // 出題時に読むと答えになるので、答え合わせで読む
+    q.choices = shuffle([mkChoice(k.y, "yomi", true)].concat(
+      kanjiDistractors(k, "yomi", 3).map(x => mkChoice(x.y, "yomi", false))));
+  } else {
+    q.label = "どの かんじ？";
+    q.emoji = k.e;
+    q.main  = { text: k.y, kind: "yomi" };
+    q.speak = k.y;
+    q.choices = shuffle([mkChoice(k.k, "kanji", true)].concat(
+      kanjiDistractors(k, "kanji", 3).map(x => mkChoice(x.k, "kanji", false))));
+  }
+  return q;
+}
+
+// 結果・図鑑に出す「この問題は何だったか」の1行
+function itemCaption(item) {
+  if (item.subject === "kanji") {
+    return item.k.y + " ／ " + item.k.w[0][0] + "（" + item.k.w[0][1] + "）";
+  }
+  return "";
+}
+function itemHead(item) { return item.subject === "kanji" ? item.k.k : ""; }
 
 let session = null;
 
@@ -868,10 +1018,9 @@ function isFishMode() { return store.data.settings.mode === "fish"; }
 function startSession(review) {
   const pool = review ? reviewPool() : buildPool();
   if (pool.length === 0) return;
-  const types = store.data.settings.qtypes;
-  const picked = pickKanji(pool, Math.min(SET_SIZE, pool.length));
-  const queue = picked.map(k => makeQuestion(k, types[Math.floor(Math.random() * types.length)]));
-  session = { queue, idx: 0, total: queue.length, results: [], locked: false, review: !!review };
+  const n = Math.min(store.data.settings.setSize, Math.max(pool.length, 1));
+  const queue = pickItems(pool, n).map(it => makeQuestion(it));
+  session = { queue: queue, idx: 0, total: queue.length, results: [], locked: false, review: !!review };
   document.getElementById("play-title").textContent = review ? "にがて れんしゅう" : "もんだい";
   showScreen("play");
   renderQuestion();
@@ -883,9 +1032,17 @@ function endSession() {
   session = null;
 }
 
+// 問題数が多いときは丸を並べきれないので数字にする
 function renderProgress() {
   const box = document.getElementById("progress");
   box.innerHTML = "";
+  if (session.total > 10) {
+    const t = document.createElement("div");
+    t.className = "progress-num";
+    t.textContent = (session.idx + 1) + " / " + session.total;
+    box.appendChild(t);
+    return;
+  }
   for (let i = 0; i < session.total; i++) {
     const d = document.createElement("div");
     d.className = "dot" + (i < session.idx ? " done" : i === session.idx ? " now" : "");
@@ -893,42 +1050,46 @@ function renderProgress() {
   }
 }
 
-/* 問題文（絵文字＋よみ／漢字／ことば）は、カードでも つりでも同じものを組み立てる */
+/* 問題文は、カードでも つりでも同じものを組み立てる */
 function fillPrompt(box, q) {
   box.innerHTML = "";
   const label = document.createElement("div");
   label.className = "q-label";
+  label.textContent = q.label;
   box.appendChild(label);
 
-  if (q.type === "y2k") {
-    label.textContent = "どの かんじ？";
+  if (q.emoji) {
     const em = document.createElement("div");
-    em.className = "q-emoji"; em.textContent = q.k.e;
-    const yo = document.createElement("div");
-    yo.className = "q-yomi"; yo.textContent = q.k.y;
-    box.appendChild(em); box.appendChild(yo);
-    box.appendChild(speakButton(q.k.y));
-    speak(q.k.y);
-  } else if (q.type === "k2y") {
-    label.textContent = "なんて よむ？";
-    const kj = document.createElement("div");
-    kj.className = "q-kanji"; kj.textContent = q.k.k;
-    box.appendChild(kj);
-  } else {
-    label.textContent = "□に はいる かんじは？";
+    em.className = "q-emoji"; em.textContent = q.emoji;
+    box.appendChild(em);
+  }
+
+  if (q.word) {
     const w = document.createElement("div");
     w.className = "q-word";
-    const i = q.word.indexOf(q.k.k);
-    w.appendChild(document.createTextNode(q.word.slice(0, i)));
+    const i = q.word.text.indexOf(q.word.target);
+    w.appendChild(document.createTextNode(q.word.text.slice(0, i)));
     const bl = document.createElement("span");
     bl.className = "blank"; bl.textContent = "□";
     w.appendChild(bl);
-    w.appendChild(document.createTextNode(q.word.slice(i + 1)));
-    const wy = document.createElement("div");
-    wy.className = "q-wordyomi"; wy.textContent = "「" + q.wordYomi + "」";
-    box.appendChild(w); box.appendChild(wy);
-    box.appendChild(speakButton(q.wordYomi));
-    speak(q.wordYomi);
+    w.appendChild(document.createTextNode(q.word.text.slice(i + q.word.target.length)));
+    box.appendChild(w);
+  } else if (q.main) {
+    const m = document.createElement("div");
+    m.className = q.main.kind === "kanji" ? "q-kanji" : "q-yomi";
+    m.textContent = q.main.text;
+    box.appendChild(m);
+  }
+
+  if (q.sub) {
+    const sb = document.createElement("div");
+    sb.className = "q-wordyomi"; sb.textContent = q.sub;
+    box.appendChild(sb);
+  }
+
+  if (q.speak) {
+    box.appendChild(speakButton(q.speak));
+    speak(q.speak);
   }
 }
 
@@ -940,11 +1101,8 @@ function speakButton(text) {
   return b;
 }
 
-// 出題時のヒント音声をもう一度（かんじ→よみ は答えになるので鳴らさない）
-function repeatPrompt(q) {
-  if (q.type === "y2k")  speak(q.k.y, true);
-  if (q.type === "word") speak(q.wordYomi, true);
-}
+// まちがえたときに、出題の読み上げをもう一度（答えになる問題では鳴らさない）
+function repeatPrompt(q) { if (q.speak) speak(q.speak, true); }
 
 function renderQuestion() {
   const q = session.queue[session.idx];
@@ -973,34 +1131,33 @@ function renderQuestion() {
    成績に残すのは「1回目の答え」だけ。
 ================================================================ */
 function recordFirstTry(q, ok) {
-  const key = q.k.k;
-  const st = store.data.stat[key] || { ok: 0, ng: 0 };
+  const id = q.id;
+  const st = store.data.stat[id] || { ok: 0, ng: 0 };
   if (ok) st.ok++; else st.ng++;
-  store.data.stat[key] = st;
+  store.data.stat[id] = st;
 
-  store.data.box[key] = ok ? Math.min(3, getBox(key) + 1) : 1;
+  store.data.box[id] = ok ? Math.min(3, getBox(id) + 1) : 1;
   if (ok) store.data.stars++;
   store.addRecord(ok);
   store.save();
   document.querySelectorAll(".star-num").forEach(e => e.textContent = store.data.stars);
 
-  session.results.push({ k: q.k, ok: ok, type: q.type });
+  session.results.push({ item: q.item, ok: ok });
 }
 
 function answer(choice) {
   if (session.locked) return null;
   const q = session.queue[session.idx];
-  const ok = choice.k === q.k.k;
   q.tries++;
-  if (q.tries === 1) recordFirstTry(q, ok);
-  if (ok) { session.locked = true; sound.correct(); }
-  else    { sound.again(); }
-  return ok;
+  if (q.tries === 1) recordFirstTry(q, choice.correct);
+  if (choice.correct) { session.locked = true; sound.correct(); }
+  else { sound.again(); }
+  return choice.correct;
 }
 
 function afterCorrect(q) {
-  if (q.type === "k2y") {
-    speak(q.k.y);
+  if (q.speakAfter) {
+    speak(q.speakAfter);
     setTimeout(nextQuestion, 1500);
   } else {
     setTimeout(nextQuestion, 900);
@@ -1026,9 +1183,9 @@ function renderCardQuestion(q) {
     const b = document.createElement("button");
     b.className = "choice";
     const span = document.createElement("span");
-    if (q.type === "k2y") { span.className = "yomi"; span.textContent = c.y; }
-    else                  { span.className = "kanji"; span.textContent = c.k; }
-    b.setAttribute("aria-label", q.type === "k2y" ? c.y : c.k);
+    span.className = c.kind === "kanji" ? "kanji" : "yomi";
+    span.textContent = c.text;
+    b.setAttribute("aria-label", c.text);
     b.appendChild(span);
     b.addEventListener("click", () => onCardChoice(b, c));
     box.appendChild(b);
@@ -1112,9 +1269,9 @@ const fishGame = (() => {
   function start(q) {
     resize();
     particles = [];
-    const isKanji = q.type !== "k2y";
     fishes = q.choices.map((c, i) => {
-      const text = q.type === "k2y" ? c.y : c.k;
+      const text = c.text;
+      const isKanji = c.kind === "kanji";
       ctx.font = fishFont(text, isKanji);
       const w = Math.max(86, Math.round(ctx.measureText(text).width) + 54);
       return {
@@ -1496,25 +1653,30 @@ function finishSession() {
 
   document.getElementById("result-big").textContent =
     okN === n ? "ぜんぶ せいかい！ 🎉" : okN >= n / 2 ? "よく できました！" : "がんばったね！";
-  document.getElementById("result-stars").textContent = "⭐".repeat(Math.min(okN, 12));
+  document.getElementById("result-stars").textContent = "⭐".repeat(Math.min(okN, 12)) +
+    (okN > 12 ? " ×" + okN : "");
 
   const list = document.getElementById("result-list");
   list.innerHTML = "";
-  const seen = {};
-  res.forEach(r => {
-    if (seen[r.k.k]) return;
-    seen[r.k.k] = true;
+  const shown = res.slice(0, 12);
+  shown.forEach(r => {
     const row = document.createElement("div");
     row.className = "result-row";
-    const k = document.createElement("div"); k.className = "k"; k.textContent = r.k.k;
+    const k = document.createElement("div"); k.className = "k"; k.textContent = itemHead(r.item);
     const t = document.createElement("div"); t.className = "t";
-    t.textContent = r.k.y + " ／ " + r.k.w[0][0] + "（" + r.k.w[0][1] + "）";
+    t.textContent = qtypeLabel(r.item.qtype) + "／" + itemCaption(r.item);
     const m = document.createElement("div"); m.className = "m";
-    m.textContent = res.filter(x => x.k.k === r.k.k).every(x => x.ok) ? "⭕" : "🔁";
+    m.textContent = r.ok ? "⭕" : "🔁";
     row.appendChild(k); row.appendChild(t); row.appendChild(m);
-    row.addEventListener("click", () => openModal(r.k));
+    if (r.item.subject === "kanji") row.addEventListener("click", () => openModal(r.item.k));
     list.appendChild(row);
   });
+  if (res.length > shown.length) {
+    const more = document.createElement("div");
+    more.className = "result-row";
+    more.innerHTML = '<div class="t" style="text-align:center">ほか ' + (res.length - shown.length) + 'もん</div>';
+    list.appendChild(more);
+  }
 
   const stamp = maybeAwardStamp();
   document.getElementById("stamp-pop").textContent = stamp ? "スタンプ ゲット！ " + stamp : "";
@@ -1525,23 +1687,36 @@ function finishSession() {
 
 /* ================================================================
    かんじずかん
+   1字につき3マス（よみ→かんじ / かんじ→よみ / ことば）。
+   3つぜんぶ できたら 金色＋⭐。
 ================================================================ */
+function kanjiProgress(k) {
+  const boxes = qtypesOf("kanji").map(t => {
+    const id = "kanji:" + k.k + ":" + t.id;
+    return { qtype: t.id, label: t.label, box: getBox(id), tried: !!store.data.stat[id] };
+  });
+  return { boxes: boxes, done: boxes.filter(b => b.box === 3).length, tried: boxes.some(b => b.tried) };
+}
+
 function renderZukan() {
   const grid = document.getElementById("zukan-grid");
   grid.innerHTML = "";
-  const done = KANJI.filter(x => getBox(x.k) === 3).length;
-  const met  = KANJI.filter(x => isSeen(x.k)).length;
+  const gold = KANJI.filter(k => kanjiProgress(k).done === 3).length;
   document.getElementById("zukan-legend").textContent =
-    "であった " + met + "もじ ／ おぼえた ⭐" + done + "もじ（ぜんぶで " + KANJI.length + "もじ）";
+    "きんいろ ⭐" + gold + "もじ ／ " + KANJI.length + "もじ（3つの あそびかた ぜんぶ できたら きんいろ）";
 
   KANJI.forEach(k => {
+    const p = kanjiProgress(k);
     const b = document.createElement("button");
-    const box = getBox(k.k);
-    b.className = "zcell " + (!isSeen(k.k) ? "new" : "b" + box);
+    b.className = "zcell " + (p.done === 3 ? "b3" : p.done >= 1 ? "b2" : p.tried ? "" : "new");
     b.textContent = k.k;
-    if (isSeen(k.k) && box === 3) {
+    if (p.done === 3) {
       const m = document.createElement("span");
       m.className = "mark"; m.textContent = "⭐";
+      b.appendChild(m);
+    } else if (p.done > 0) {
+      const m = document.createElement("span");
+      m.className = "mark"; m.textContent = p.done + "/3";
       b.appendChild(m);
     }
     b.addEventListener("click", () => { sound.tap(); openModal(k); });
@@ -1551,8 +1726,7 @@ function renderZukan() {
 
 function openModal(k) {
   const m = document.getElementById("modal");
-  const st = statOf(k.k);
-  const box = getBox(k.k);
+  const p = kanjiProgress(k);
   m.innerHTML = "";
 
   const kk = document.createElement("div"); kk.className = "mk"; kk.textContent = k.k;
@@ -1567,11 +1741,20 @@ function openModal(k) {
     m.appendChild(w);
   });
 
+  const tbl = document.createElement("div");
+  tbl.className = "mtypes";
+  p.boxes.forEach(b => {
+    const row = document.createElement("div");
+    row.className = "mtype-row";
+    const mark = b.box === 3 ? "⭐" : b.box === 2 ? "🔵" : b.tried ? "🔁" : "・";
+    row.innerHTML = "<span>" + b.label + "</span><span>" + mark + "</span>";
+    tbl.appendChild(row);
+  });
+  m.appendChild(tbl);
+
   const info = document.createElement("div");
   info.className = "mbox";
-  info.textContent = isSeen(k.k)
-    ? "レベル" + k.lv + " ／ " + k.g + " ／ ⭕" + st.ok + " 🔁" + st.ng + " ／ " + ["","おぼえかけ","もうすこし","おぼえた⭐"][box]
-    : "レベル" + k.lv + " ／ " + k.g + " ／ まだ であって いないよ";
+  info.textContent = "レベル" + k.lv + " ／ " + k.g;
   m.appendChild(info);
 
   const sp = document.createElement("button");
@@ -1600,8 +1783,7 @@ document.getElementById("modal-back").addEventListener("click", e => {
 ================================================================ */
 function renderRecord() {
   const body = document.getElementById("record-body");
-  const done = KANJI.filter(x => getBox(x.k) === 3).length;
-  const met  = KANJI.filter(x => isSeen(x.k)).length;
+  const gold = KANJI.filter(k => kanjiProgress(k).done === 3).length;
   body.innerHTML = "";
 
   const c1 = document.createElement("div");
@@ -1609,8 +1791,8 @@ function renderRecord() {
   c1.innerHTML =
     '<div class="stat-row">' +
       '<div><div class="n">' + store.data.stars + '</div><div class="l">ほし</div></div>' +
-      '<div><div class="n">' + done + '</div><div class="l">おぼえた</div></div>' +
-      '<div><div class="n">' + met + '</div><div class="l">であった</div></div>' +
+      '<div><div class="n">' + doneCount() + '<span style="font-size:15px">/' + ITEMS.length + '</span></div><div class="l">できたマス</div></div>' +
+      '<div><div class="n">' + gold + '</div><div class="l">きんいろ</div></div>' +
     '</div>';
   body.appendChild(c1);
 
@@ -1648,24 +1830,33 @@ function renderRecord() {
   }
   body.appendChild(c3);
 
+  // にがては「マス」単位。どの遊びかたで詰まっているかが分かる
   const weak = reviewPool();
   const c4 = document.createElement("div");
   c4.className = "card";
-  c4.innerHTML = "<h3>にがて かんじ</h3>";
+  c4.innerHTML = "<h3>にがて（" + weak.length + "マス）</h3>";
   if (weak.length === 0) {
     c4.innerHTML += '<div style="font-size:15px;color:#a0704a">いまは ないよ 🎉</div>';
   } else {
-    const wrap = document.createElement("div");
-    wrap.className = "stamp-grid";
-    weak.forEach(k => {
-      const b = document.createElement("button");
-      b.className = "zcell";
-      b.style.width = "58px"; b.style.height = "58px"; b.style.aspectRatio = "auto";
-      b.textContent = k.k;
-      b.addEventListener("click", () => openModal(k));
-      wrap.appendChild(b);
+    const byType = {};
+    weak.forEach(i => { (byType[i.qtype] = byType[i.qtype] || []).push(i); });
+    Object.keys(byType).forEach(t => {
+      const h = document.createElement("div");
+      h.style.cssText = "font-size:14px;color:#a0704a;margin:8px 0 4px";
+      h.textContent = qtypeLabel(t) + "（" + byType[t].length + "）";
+      c4.appendChild(h);
+      const wrap = document.createElement("div");
+      wrap.className = "stamp-grid";
+      byType[t].slice(0, 40).forEach(i => {
+        const b = document.createElement("button");
+        b.className = "zcell";
+        b.style.cssText = "width:52px;height:52px;aspect-ratio:auto;font-size:28px";
+        b.textContent = itemHead(i);
+        b.addEventListener("click", () => { if (i.subject === "kanji") openModal(i.k); });
+        wrap.appendChild(b);
+      });
+      c4.appendChild(wrap);
     });
-    c4.appendChild(wrap);
   }
   body.appendChild(c4);
 }
@@ -1757,7 +1948,7 @@ function renderSettings() {
   c2.className = "card";
   c2.innerHTML = "<h3>データ</h3>" +
     '<div style="font-size:15px;color:#6b5a46;margin-bottom:8px">' +
-      "ほし " + store.data.stars + " ／ おぼえた " + KANJI.filter(x => getBox(x.k) === 3).length + "もじ" +
+      "ほし " + store.data.stars + " ／ できたマス " + doneCount() + "／" + ITEMS.length +
     "</div>";
   const del = document.createElement("button");
   del.className = "big-btn danger";
