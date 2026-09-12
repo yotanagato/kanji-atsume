@@ -171,6 +171,26 @@
   .dot.done { background: #ffb84d; box-shadow: none; }
   .dot.now  { background: #d2603a; box-shadow: 0 0 0 3px #ffd9c0; }
 
+  .q-num {
+    font-size: clamp(46px, 13vw, 74px); font-weight: bold; color: #3a3226; letter-spacing: 0.04em;
+  }
+  .q-bar .q-num { font-size: clamp(34px, 10vw, 52px); }
+  .choice .num { font-size: clamp(40px, 12vw, 64px); font-weight: bold; }
+
+  /* ===== くく表 ===== */
+  #kuku-table { width: 100%; display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding-bottom: 12px; }
+  .kcell {
+    aspect-ratio: 1 / 1; border: none; border-radius: 8px; cursor: pointer;
+    background: #fff; box-shadow: 0 2px 0 rgba(0,0,0,0.10);
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit; font-size: clamp(11px, 3vw, 16px); font-weight: bold; color: #3a3226;
+  }
+  .kcell.head { background: #ffe2c0; color: #c96a1e; box-shadow: none; cursor: default; }
+  .kcell.corner { background: transparent; box-shadow: none; cursor: default; }
+  .kcell.new { background: #f6efe4; color: #c8bba8; }
+  .kcell.b2  { background: #ddf0ff; box-shadow: 0 2px 0 #a8cfe8; }
+  .kcell.b3  { background: linear-gradient(180deg, #fff2c4, #ffdf8a); box-shadow: 0 2px 0 #e0b84d; }
+
   .progress-num { font-size: 16px; font-weight: bold; color: #a0704a; padding: 2px 0; }
 
   .mtypes { margin: 10px 0 2px; border-top: 1px dashed #f0e0cc; }
@@ -295,6 +315,9 @@
     <div class="chip-row" id="level-chips"></div>
     <div class="chip-row" id="group-chips"></div>
 
+    <div class="pick-label" id="dan-label">どの だん？</div>
+    <div class="chip-row" id="dan-chips"></div>
+
     <div class="pick-label">もんだいの かたち</div>
     <div class="chip-row" id="qtype-chips"></div>
 
@@ -305,7 +328,7 @@
 
     <button class="big-btn btn-start" id="btn-start"><span class="emoji">🎴</span>はじめる</button>
     <button class="big-btn btn-review" id="btn-review"><span class="emoji">🔁</span>にがてを れんしゅう</button>
-    <button class="big-btn btn-zukan" data-go="zukan"><span class="emoji">📖</span>かんじずかん</button>
+    <button class="big-btn btn-zukan" data-go="zukan"><span class="emoji">📖</span>ずかん</button>
     <div class="spacer"></div>
     <button class="big-btn btn-record" data-go="record"><span class="emoji">⭐</span>きろく<span class="star-num">0</span></button>
     <button class="big-btn btn-gate" data-go="gate"><span class="emoji">🔒</span>おとなのひと</button>
@@ -348,11 +371,13 @@
   <div class="screen" id="screen-zukan">
     <div class="top-bar">
       <button class="back-btn" data-go="home">もどる</button>
-      <div class="screen-title">かんじずかん</div>
+      <div class="screen-title">ずかん</div>
       <div class="star-count">⭐<span class="star-num">0</span></div>
     </div>
+    <div class="chip-row" id="zukan-tabs"></div>
     <div class="zukan-legend" id="zukan-legend"></div>
     <div class="zukan-grid" id="zukan-grid"></div>
+    <div id="kuku-table" hidden></div>
   </div>
 
   <!-- ============ きろく ============ -->
@@ -504,14 +529,25 @@ const GROUPS = ["かず","しぜん","からだ","ひと","まち","うごき","
    ここに足せば、あとは共通の「マス（item）」の仕組みに乗る
 ================================================================ */
 const SUBJECTS = [
-  { id: "kanji", label: "かんじ" }
+  { id: "kanji", label: "✏️ かんじ" },
+  { id: "kuku",  label: "✖️ くく" }
 ];
 
 const QTYPES = [
   { id: "y2k",  subject: "kanji", label: "よみ→かんじ" },
   { id: "k2y",  subject: "kanji", label: "かんじ→よみ" },
-  { id: "word", subject: "kanji", label: "ことば" }
+  { id: "word", subject: "kanji", label: "ことば" },
+  { id: "mul",  subject: "kuku",  label: "かけざん" }
 ];
+
+// 数字のひらがな読み（読み上げ用）
+const NUM_YOMI = ["ゼロ","いち","に","さん","よん","ご","ろく","なな","はち","きゅう"];
+function numYomi(n) {
+  if (n < 10) return NUM_YOMI[n];
+  if (n < 20) return "じゅう" + (n % 10 ? NUM_YOMI[n % 10] : "");
+  const t = Math.floor(n / 10);
+  return NUM_YOMI[t] + "じゅう" + (n % 10 ? NUM_YOMI[n % 10] : "");
+}
 function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
@@ -531,6 +567,11 @@ function buildAllItems() {
       out.push({ id: "kanji:" + k.k + ":" + t.id, subject: "kanji", qtype: t.id, k: k });
     });
   });
+  for (let a = 1; a <= 9; a++) {
+    for (let b = 1; b <= 9; b++) {
+      out.push({ id: "kuku:" + a + "x" + b + ":mul", subject: "kuku", qtype: "mul", a: a, b: b });
+    }
+  }
   return out;
 }
 const ITEMS = buildAllItems();
@@ -556,8 +597,8 @@ const DEFAULT_DATA = {
   days: {},         // "YYYY-MM-DD" -> { total, ok }
   settings: {
     speak: true, rate: 0.9, voiceURI: "", mode: "fish",
-    subjects: ["kanji"], qtypes: ["y2k","k2y","word"],
-    lv: 0, grp: "", setSize: 5
+    subjects: ["kanji"], qtypes: ["y2k","k2y","word","mul"],
+    lv: 0, grp: "", dan: 0, setSize: 5
   }
 };
 
@@ -851,6 +892,22 @@ function renderChips() {
     });
   }
 
+  // 九九を選んでいるときだけ、だんを出す
+  const kukuOn = s.subjects.includes("kuku");
+  document.getElementById("dan-label").hidden = !kukuOn;
+  const dBox = document.getElementById("dan-chips");
+  dBox.hidden = !kukuOn;
+  dBox.innerHTML = "";
+  if (kukuOn) {
+    [0,1,2,3,4,5,6,7,8,9].forEach(d => {
+      const b = document.createElement("button");
+      b.className = "chip" + (s.dan === d ? " on" : "");
+      b.textContent = d === 0 ? "だん ぜんぶ" : d + "のだん";
+      b.addEventListener("click", () => { sound.tap(); s.dan = d; store.save(); renderChips(); renderPoolInfo(); });
+      dBox.appendChild(b);
+    });
+  }
+
   // 出題タイプ（選んでいる教科のぶんだけ）
   const qBox = document.getElementById("qtype-chips");
   qBox.innerHTML = "";
@@ -891,6 +948,9 @@ function buildPool() {
     if (i.subject === "kanji") {
       if (s.lv !== 0 && i.k.lv !== s.lv) return false;
       if (s.grp !== "" && i.k.g !== s.grp) return false;
+    }
+    if (i.subject === "kuku") {
+      if (s.dan !== 0 && i.a !== s.dan) return false;
     }
     return true;
   });
@@ -972,6 +1032,45 @@ function kanjiDistractors(target, kind, n, exclude) {
 function makeQuestion(item, retry) {
   const q = { item: item, id: item.id, retry: !!retry, tries: 0 };
   if (item.subject === "kanji") return makeKanjiQuestion(q, item);
+  if (item.subject === "kuku")  return makeKukuQuestion(q, item);
+  return q;
+}
+
+const ALL_PRODUCTS = (() => {
+  const set = {};
+  for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) set[a * b] = true;
+  return Object.keys(set).map(Number);
+})();
+
+// ダミーは3種類を1つずつ。
+//  ①段ちがい（9×7に対する 9×6＝ans-9）… 九九でいちばん起きるまちがい
+//  ②1〜2ちがい … 数え間違い
+//  ③まったく別の九九の答え … 全部が近い数だと、そもそも見分けがつかず苦行になる
+function numDistractors(ans, a, b, n) {
+  const used = {}; used[ans] = true;
+  const out = [];
+  const push = v => {
+    if (v > 0 && v <= 81 && !used[v]) { used[v] = true; out.push(v); return true; }
+    return false;
+  };
+  const rowShift = shuffle([ans + a, ans - a, ans + b, ans - b]);
+  const near     = shuffle([ans + 1, ans - 1, ans + 2, ans - 2]);
+  const others   = shuffle(ALL_PRODUCTS).filter(v => Math.abs(v - ans) > 2);
+  for (const v of rowShift) if (push(v)) break;
+  for (const v of near)     if (push(v)) break;
+  for (const v of others)   if (push(v)) break;
+  for (const v of rowShift.concat(near, others)) { if (out.length >= n) break; push(v); }
+  return shuffle(out).slice(0, n);
+}
+
+function makeKukuQuestion(q, it) {
+  const ans = it.a * it.b;
+  q.label = "こたえは？";
+  q.main  = { text: it.a + " × " + it.b, kind: "num" };
+  q.speak = numYomi(it.a) + " かける " + numYomi(it.b) + " は？";
+  q.speakAfter = numYomi(it.a) + " かける " + numYomi(it.b) + " は " + numYomi(ans);
+  q.choices = shuffle([mkChoice(String(ans), "num", true)].concat(
+    numDistractors(ans, it.a, it.b, 3).map(v => mkChoice(String(v), "num", false))));
   return q;
 }
 
@@ -1007,9 +1106,16 @@ function itemCaption(item) {
   if (item.subject === "kanji") {
     return item.k.y + " ／ " + item.k.w[0][0] + "（" + item.k.w[0][1] + "）";
   }
+  if (item.subject === "kuku") {
+    return item.a + " × " + item.b + " = " + (item.a * item.b);
+  }
   return "";
 }
-function itemHead(item) { return item.subject === "kanji" ? item.k.k : ""; }
+function itemHead(item) {
+  if (item.subject === "kanji") return item.k.k;
+  if (item.subject === "kuku")  return item.a + "×" + item.b;
+  return "";
+}
 
 let session = null;
 
@@ -1076,7 +1182,7 @@ function fillPrompt(box, q) {
     box.appendChild(w);
   } else if (q.main) {
     const m = document.createElement("div");
-    m.className = q.main.kind === "kanji" ? "q-kanji" : "q-yomi";
+    m.className = q.main.kind === "kanji" ? "q-kanji" : q.main.kind === "num" ? "q-num" : "q-yomi";
     m.textContent = q.main.text;
     box.appendChild(m);
   }
@@ -1183,7 +1289,7 @@ function renderCardQuestion(q) {
     const b = document.createElement("button");
     b.className = "choice";
     const span = document.createElement("span");
-    span.className = c.kind === "kanji" ? "kanji" : "yomi";
+    span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : "yomi";
     span.textContent = c.text;
     b.setAttribute("aria-label", c.text);
     b.appendChild(span);
@@ -1235,8 +1341,9 @@ const fishGame = (() => {
 
   // 漢字は明朝、よみはまるゴシック。
   // 文字数で切り替えると「て」と「ちから」で書体が変わってしまうので、種類で決める
-  function fishFont(text, isKanji) {
-    if (isKanji) return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
+  function fishFont(text, kind) {
+    if (kind === "kanji") return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
+    if (kind === "num")   return 'bold 28px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
     const n = text.length;
     const size = n <= 2 ? 25 : n <= 4 ? 22 : 18;
     return 'bold ' + size + 'px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
@@ -1271,11 +1378,10 @@ const fishGame = (() => {
     particles = [];
     fishes = q.choices.map((c, i) => {
       const text = c.text;
-      const isKanji = c.kind === "kanji";
-      ctx.font = fishFont(text, isKanji);
+      ctx.font = fishFont(text, c.kind);
       const w = Math.max(86, Math.round(ctx.measureText(text).width) + 54);
       return {
-        choice: c, text: text, isKanji: isKanji,
+        choice: c, text: text, kind: c.kind,
         w: w, h: Math.round(w * 0.58),
         x: 0, laneY: 0, phase: Math.random() * Math.PI * 2,
         speed: 0.45 + Math.random() * 0.6,
@@ -1482,7 +1588,7 @@ const fishGame = (() => {
     ctx.fill();
 
     ctx.scale(f.dir < 0 ? -1 : 1, 1);
-    ctx.font = fishFont(f.text, f.isKanji);
+    ctx.font = fishFont(f.text, f.kind);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -1663,6 +1769,7 @@ function finishSession() {
     const row = document.createElement("div");
     row.className = "result-row";
     const k = document.createElement("div"); k.className = "k"; k.textContent = itemHead(r.item);
+    if (k.textContent.length > 1) k.style.fontSize = "19px";
     const t = document.createElement("div"); t.className = "t";
     t.textContent = qtypeLabel(r.item.qtype) + "／" + itemCaption(r.item);
     const m = document.createElement("div"); m.className = "m";
@@ -1698,8 +1805,84 @@ function kanjiProgress(k) {
   return { boxes: boxes, done: boxes.filter(b => b.box === 3).length, tried: boxes.some(b => b.tried) };
 }
 
+let zukanTab = "kanji";
+
 function renderZukan() {
-  const grid = document.getElementById("zukan-grid");
+  const tabs = document.getElementById("zukan-tabs");
+  tabs.innerHTML = "";
+  tabs.hidden = SUBJECTS.length < 2;
+  SUBJECTS.forEach(sub => {
+    const b = document.createElement("button");
+    b.className = "chip" + (zukanTab === sub.id ? " on" : "");
+    b.textContent = sub.label;
+    b.addEventListener("click", () => { sound.tap(); zukanTab = sub.id; renderZukan(); });
+    tabs.appendChild(b);
+  });
+  if (zukanTab === "kuku") renderZukanKuku();
+  else renderZukanKanji();
+}
+
+function renderZukanKuku() {
+  document.getElementById("zukan-grid").hidden = true;
+  const t = document.getElementById("kuku-table");
+  t.hidden = false;
+  t.innerHTML = "";
+  const done = ITEMS.filter(i => i.subject === "kuku" && getBox(i.id) === 3).length;
+  document.getElementById("zukan-legend").textContent = "できた " + done + " ／ 81マス";
+
+  const corner = document.createElement("div");
+  corner.className = "kcell head"; corner.textContent = "×";
+  t.appendChild(corner);
+  for (let b = 1; b <= 9; b++) {
+    const h = document.createElement("div");
+    h.className = "kcell head"; h.textContent = b;
+    t.appendChild(h);
+  }
+  for (let a = 1; a <= 9; a++) {
+    const h = document.createElement("div");
+    h.className = "kcell head"; h.textContent = a;
+    t.appendChild(h);
+    for (let b = 1; b <= 9; b++) {
+      const id = "kuku:" + a + "x" + b + ":mul";
+      const box = getBox(id), tried = !!store.data.stat[id];
+      const c = document.createElement("button");
+      c.className = "kcell " + (box === 3 ? "b3" : box === 2 ? "b2" : tried ? "" : "new");
+      c.textContent = a * b;
+      c.addEventListener("click", () => { sound.tap(); openKukuModal(a, b); });
+      t.appendChild(c);
+    }
+  }
+}
+
+function openKukuModal(a, b) {
+  const m = document.getElementById("modal");
+  const id = "kuku:" + a + "x" + b + ":mul";
+  const box = getBox(id), st = statOf(id);
+  m.innerHTML = "";
+  const kk = document.createElement("div");
+  kk.className = "mk"; kk.style.fontSize = "clamp(40px, 12vw, 64px)";
+  kk.textContent = a + " × " + b + " = " + (a * b);
+  m.appendChild(kk);
+  const info = document.createElement("div");
+  info.className = "mbox";
+  info.textContent = (box === 3 ? "できた ⭐" : box === 2 ? "もうすこし 🔵" : st.ng > 0 ? "にがて 🔁" : "まだ やって いないよ")
+    + "（⭕" + st.ok + " 🔁" + st.ng + "）";
+  m.appendChild(info);
+  const sp = document.createElement("button");
+  sp.className = "speak-btn"; sp.style.marginTop = "12px";
+  sp.textContent = "🔊 きく";
+  sp.addEventListener("click", () => speak(numYomi(a) + " かける " + numYomi(b) + " は " + numYomi(a * b), true));
+  m.appendChild(sp);
+  const cl = document.createElement("button");
+  cl.className = "big-btn btn-record"; cl.style.marginTop = "10px";
+  cl.textContent = "とじる";
+  cl.addEventListener("click", closeModal);
+  m.appendChild(cl);
+  document.getElementById("modal-back").classList.add("on");
+}
+
+function renderZukanKanji() {
+  document.getElementById("kuku-table").hidden = true;
   grid.innerHTML = "";
   const gold = KANJI.filter(k => kanjiProgress(k).done === 3).length;
   document.getElementById("zukan-legend").textContent =
