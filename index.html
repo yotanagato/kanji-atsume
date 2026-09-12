@@ -653,7 +653,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-12-4";
+const APP_VERSION = "2026-09-12-5";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -1190,6 +1190,7 @@ function makeEigoQuestion(q, it) {
     q.emoji = w.e;
     q.main  = { text: w.ja, kind: "yomi" };
     q.speak = w.say || w.ja;
+    q.speakAfterEn = w.en;   // 正解したら、その英単語を聞かせる
     q.choices = shuffle([mkChoice(w.en, "en", true)].concat(
       eigoDistractors(w, "en", 3).map(x => mkChoice(x.en, "en", false))));
   } else {
@@ -1450,7 +1451,10 @@ function answer(choice) {
 }
 
 function afterCorrect(q) {
-  if (q.speakAfter) {
+  if (q.speakAfterEn && hasEnVoice()) {
+    speakEn(q.speakAfterEn);
+    setTimeout(nextQuestion, 1500);
+  } else if (q.speakAfter) {
     speak(q.speakAfter);
     setTimeout(nextQuestion, 1500);
   } else {
@@ -2244,7 +2248,10 @@ function renderRecord() {
 
   const c2 = document.createElement("div");
   c2.className = "card";
-  c2.innerHTML = "<h3>あつめた スタンプ（ほし" + STARS_PER_STAMP + "こで 1つ）</h3>";
+  const nextIn = STARS_PER_STAMP - (store.data.stars % STARS_PER_STAMP);
+  c2.innerHTML = "<h3>あつめた スタンプ " + store.data.stamps.length + "／" + STAMP_POOL.length + "</h3>" +
+    '<div style="font-size:14px;color:#a0704a;margin-bottom:8px">' +
+    "ほし" + STARS_PER_STAMP + "こで 1つ もらえるよ。あと ⭐" + nextIn + "こ</div>";
   const sg = document.createElement("div");
   sg.className = "stamp-grid";
   if (store.data.stamps.length === 0) {
