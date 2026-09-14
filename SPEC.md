@@ -34,7 +34,21 @@ id が定まらず「この問題ができた」を記録できない（マス�
 それ以外は触らなくてよい。`kind` は `kanji`（明朝）/ `yomi` / `en` / `num` で書体が決まる。
 
 - 場所: `C:\Users\yotan\OneDrive\Desktop\claude\kanji-atsume\`
-- 構成: `index.html`（HTML/CSS/JS 全部入り）＋ `manifest.json` / `sw.js` / `icon-192.png` / `icon-512.png` / `README.md`
+- 構成:
+
+  | ファイル | 中身 | 行数めやす |
+  | --- | --- | --- |
+  | `index.html` | HTML・CSS・出題エンジン・図鑑・記録・設定・版管理 | 約2,040 |
+  | `data.js` | **問題データだけ**（KANJI / EIGO / SHOSU / BUNSU）。処理は書かない | 約190 |
+  | `game.js` | さかなつりモード（canvas の魚とねこ）。見た目だけ | 約570 |
+  | `manifest.json` / `sw.js` / `version.json` / `icon-*.png` / `README.md` / `bump-version.py` | | |
+
+  読み込み順は **data.js → index.html の本体 → game.js**。
+  - `data.js` は先。起動時に `buildAllItems()` が配列を使うため
+  - `game.js` は後。`document.getElementById("fish-canvas")` を読み込み時に触るのと、
+    `answer()` / `afterCorrect()` / `repeatPrompt()` / `session` を index.html 側に依存しているため
+  - `<script src>` で読むので **file:// で開いてもそのまま動く**（JSONを fetch する形にすると CORS で死ぬ）
+  - ファイルを増やしたら **`sw.js` の `ASSETS` にも足す**（オフラインで欠ける）
 - 公開: https://yotanagato.github.io/kanji-atsume/ （GitHub Pages / repo `yotanagato/kanji-atsume` / main のルート）
 - アプリ名は「まなびあつめ」。フォルダ名とURLは kanji-atsume のまま（ブックマークと Pages 設定を壊さないため）
 - dev server: `.claude/launch.json` の `kanji-atsume`（python http.server, port 8646）
