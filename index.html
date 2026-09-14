@@ -171,6 +171,14 @@
   .dot.done { background: #ffb84d; box-shadow: none; }
   .dot.now  { background: #d2603a; box-shadow: 0 0 0 3px #ffd9c0; }
 
+  /* 分数（上下に積む） */
+  .frac { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.02; font-weight: bold; }
+  .frac .fn { padding: 0 5px 2px; border-bottom: 3px solid currentColor; }
+  .frac .fd { padding: 3px 5px 0; }
+  .choice .num .frac { font-size: clamp(24px, 7vw, 36px); }
+  .erow .frac { font-size: 18px; color: #3a3226; }
+  .result-row .k .frac { font-size: 15px; }
+
   .q-pie { width: clamp(104px, 30vw, 150px); line-height: 0; }
   .q-pie svg { width: 100%; height: auto; }
   .q-bar .q-pie { width: clamp(78px, 22vw, 110px); }
@@ -632,12 +640,10 @@ const SHOSU = [
   ["×", 1.5, 4], ["×", 2.1, 3], ["×", 4.5, 2], ["×", 0.2, 7],
   ["×", 1.1, 5], ["×", 3.2, 2], ["×", 0.8, 3], ["×", 2.4, 2],
   ["×", 6.5, 2], ["×", 1.3, 3], ["×", 0.7, 5], ["×", 2.2, 4],
-  // わりざん（÷2・÷4・÷5 だけ。答えが小数第2位までに収まる）
-  ["÷", 5, 2], ["÷", 7, 2], ["÷", 9, 2], ["÷", 3, 2],
-  ["÷", 1, 2], ["÷", 11, 2], ["÷", 13, 2], ["÷", 15, 2],
-  ["÷", 5, 4], ["÷", 7, 4], ["÷", 3, 4], ["÷", 9, 4],
-  ["÷", 1, 4], ["÷", 6, 4], ["÷", 1, 5], ["÷", 3, 5],
-  ["÷", 7, 5], ["÷", 9, 5], ["÷", 12, 5], ["÷", 2, 4]
+  // わりざん（÷2 だけ。答えは必ず「◯.5」か整数になる）
+  ["÷", 1, 2], ["÷", 3, 2], ["÷", 5, 2], ["÷", 7, 2],
+  ["÷", 9, 2], ["÷", 11, 2], ["÷", 13, 2], ["÷", 15, 2],
+  ["÷", 17, 2], ["÷", 19, 2], ["÷", 21, 2], ["÷", 25, 2]
 ];
 
 function decValue(op, a, b) {
@@ -655,6 +661,11 @@ const BUNSU = [
   [1,6],[5,6], [1,8],[3,8],[5,8],[7,8], [1,10],[3,10],[7,10],[9,10]
 ];
 function fracText(f) { return f[0] + "/" + f[1]; }
+
+// 分数を「上下に積んだ形」で出すための入れもの（カード・図鑑・けっか で使う）
+function fracHTML(n, d) {
+  return '<span class="frac"><span class="fn">' + n + '</span><span class="fd">' + d + '</span></span>';
+}
 
 /* 扇形を SVG で描く（HTMLの問題文に埋め込む） */
 function pieSVG(n, d) {
@@ -708,7 +719,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-14-4";
+const APP_VERSION = "2026-09-14-5";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -1236,8 +1247,13 @@ function makeBunsuQuestion(q, it) {
   add(same[0]);
   shuffle(near.slice(0, 8)).forEach(add);
   near.forEach(add);
-  q.choices = shuffle([mkChoice(fracText([it.n, it.d]), "num", true)].concat(
-    picked.map(f => mkChoice(fracText(f), "num", false))));
+  const frac = (n, d, ok) => {
+    const c = mkChoice(n + "/" + d, "frac", ok);
+    c.n = n; c.d = d;
+    return c;
+  };
+  q.choices = shuffle([frac(it.n, it.d, true)].concat(
+    picked.map(f => frac(f[0], f[1], false))));
   return q;
 }
 
@@ -1570,7 +1586,8 @@ function renderCardQuestion(q) {
     b.className = "choice";
     const span = document.createElement("span");
     span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : c.kind === "en" ? "en" : "yomi";
-    span.textContent = c.text;
+    if (c.kind === "frac") { span.className = "num"; span.innerHTML = fracHTML(c.n, c.d); }
+    else span.textContent = c.text;
     b.setAttribute("aria-label", c.text);
     b.appendChild(span);
     b.addEventListener("click", () => onCardChoice(b, c));
@@ -1621,6 +1638,24 @@ const fishGame = (() => {
 
   // 漢字は明朝、よみはまるゴシック。
   // 文字数で切り替えると「て」と「ちから」で書体が変わってしまうので、種類で決める
+  function fracFont() {
+    return 'bold 21px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
+  }
+
+  // 分数は 分子／よこ線／分母 の3つを積んで描く
+  function drawFrac(ctx, n, d) {
+    ctx.font = fracFont();
+    const wn = ctx.measureText(String(n)).width;
+    const wd = ctx.measureText(String(d)).width;
+    const lw = Math.max(wn, wd) + 10;
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 4;
+    ctx.fillText(String(n), 0, -13);
+    ctx.fillText(String(d), 0, 15);
+    ctx.shadowBlur = 0;
+    ctx.fillRect(-lw / 2, 0, lw, 3);
+  }
+
   function fishFont(text, kind) {
     if (kind === "kanji") return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
     if (kind === "num")   return 'bold 28px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
@@ -1659,10 +1694,18 @@ const fishGame = (() => {
     particles = [];
     fishes = q.choices.map((c, i) => {
       const text = c.text;
-      ctx.font = fishFont(text, c.kind);
-      const w = Math.max(86, Math.round(ctx.measureText(text).width) + 54);
+      let w;
+      if (c.kind === "frac") {
+        // 上下に積むので、幅は大きいほうの数字＋余白、高さも確保できるよう太めにする
+        ctx.font = fracFont();
+        w = Math.max(102, Math.round(Math.max(
+          ctx.measureText(String(c.n)).width, ctx.measureText(String(c.d)).width)) + 66);
+      } else {
+        ctx.font = fishFont(text, c.kind);
+        w = Math.max(86, Math.round(ctx.measureText(text).width) + 54);
+      }
       return {
-        choice: c, text: text, kind: c.kind,
+        choice: c, text: text, kind: c.kind, n: c.n, d: c.d,
         w: w, h: Math.round(w * 0.58),
         x: 0, laneY: 0, phase: Math.random() * Math.PI * 2,
         speed: 0.45 + Math.random() * 0.6,
@@ -1891,14 +1934,18 @@ const fishGame = (() => {
 
     // 字（向きは戻してから描く）
     ctx.scale(f.dir < 0 ? -1 : 1, 1);
-    ctx.font = fishFont(f.text, f.kind);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur = 4;
-    ctx.fillText(f.text, 0, 2);
-    ctx.shadowBlur = 0;
+    if (f.kind === "frac") {
+      drawFrac(ctx, f.n, f.d);
+    } else {
+      ctx.font = fishFont(f.text, f.kind);
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(f.text, 0, 2);
+      ctx.shadowBlur = 0;
+    }
     ctx.restore();
   }
 
@@ -2154,8 +2201,13 @@ function finishSession() {
   shown.forEach(r => {
     const row = document.createElement("div");
     row.className = "result-row";
-    const k = document.createElement("div"); k.className = "k"; k.textContent = itemHead(r.item);
-    if (k.textContent.length > 1) k.style.fontSize = "19px";
+    const k = document.createElement("div"); k.className = "k";
+    if (r.item.subject === "bunsu") {
+      k.innerHTML = fracHTML(r.item.n, r.item.d);
+    } else {
+      k.textContent = itemHead(r.item);
+      if (k.textContent.length > 1) k.style.fontSize = "19px";
+    }
     const t = document.createElement("div"); t.className = "t";
     t.textContent = qtypeLabel(r.item.qtype) + "／" + itemCaption(r.item);
     const m = document.createElement("div"); m.className = "m";
@@ -2225,7 +2277,7 @@ function renderZukanList(subject) {
     row.className = "erow " + (b === 3 ? "b3" : b === 2 ? "b2" : tried ? "" : "new");
     if (subject === "bunsu") {
       row.innerHTML = '<span class="ee" style="width:42px">' + pieSVG(i.n, i.d) + '</span>' +
-        '<span class="ja" style="font-size:19px;font-weight:bold">' + i.n + " / " + i.d + '</span>' +
+        '<span class="ja">' + fracHTML(i.n, i.d) + '</span>' +
         '<span class="mk2">' + (b === 3 ? "⭐" : b === 2 ? "🔵" : tried ? "🔁" : "・") + '</span>';
     } else {
       row.innerHTML = '<span class="ja" style="font-size:18px;font-weight:bold">' +
