@@ -469,7 +469,7 @@
   <div class="modal" id="modal"></div>
 </div>
 
-<script src="data.js?v=2026-09-15-9"></script>
+<script src="data.js?v=2026-09-15-10"></script>
 <script>
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
@@ -562,7 +562,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-15-9";
+const APP_VERSION = "2026-09-15-10";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -980,23 +980,36 @@ function weightOf(item) {
   return b === 1 ? 6 : b === 2 ? 3 : 1;
 }
 
-// 苦手なマスほど当たりやすく。ただし同じ見出し（同じ漢字）は
-// 候補がある限り1セットに1回までにする（同じ字が続くと飽きるため）
+// 出題するマスを選ぶ。
+//   ① まず教科を選び ② その中から苦手なマスほど当たりやすく引く
+// マス全体から引くと、**マス数の多い教科ばかり当たる**（とけいは696マスあり、
+// 「ぜんぶ」の半分以上を占めていた）。教科を先に選べば、どの教科も同じくらい出る。
+// 同じ見出し（同じ漢字・同じ単語）は、候補がある限り1セットに1回まで。
 function pickItems(pool, n) {
-  const rest = pool.slice();
+  const groups = {};
+  pool.forEach(i => { (groups[i.subject] = groups[i.subject] || []).push(i); });
+  const rest = {};
+  Object.keys(groups).forEach(k => { rest[k] = groups[k].slice(); });
+  let live = Object.keys(groups);
+
   const out = [];
-  let used = {};
-  while (out.length < n && rest.length > 0) {
-    let cand = rest.filter(i => !used[refKey(i)]);
-    if (cand.length === 0) { used = {}; cand = rest.slice(); }
+  const usedRef = {};
+  while (out.length < n && live.length > 0) {
+    const gk = live[Math.floor(Math.random() * live.length)];
+    if (rest[gk].length === 0) { live = live.filter(k => k !== gk); continue; }
+
+    let cand = rest[gk].filter(i => !usedRef[refKey(i)]);
+    if (cand.length === 0) cand = rest[gk];   // 出しつくしたら同じ見出しの再登場も許す
+
     let total = 0;
     for (const i of cand) total += weightOf(i);
     let r = Math.random() * total;
     let pick = cand[cand.length - 1];
     for (const i of cand) { r -= weightOf(i); if (r <= 0) { pick = i; break; } }
+
     out.push(pick);
-    used[refKey(pick)] = true;
-    rest.splice(rest.indexOf(pick), 1);
+    usedRef[refKey(pick)] = true;
+    rest[gk].splice(rest[gk].indexOf(pick), 1);
   }
   return out;
 }
@@ -2196,6 +2209,6 @@ async function checkVersion() {
 }
 window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
-<script src="game.js?v=2026-09-15-9"></script>
+<script src="game.js?v=2026-09-15-10"></script>
 </body>
 </html>
