@@ -469,7 +469,7 @@
   <div class="modal" id="modal"></div>
 </div>
 
-<script src="data.js?v=2026-09-15-8"></script>
+<script src="data.js?v=2026-09-15-9"></script>
 <script>
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
@@ -562,7 +562,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-15-8";
+const APP_VERSION = "2026-09-15-9";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -1134,6 +1134,153 @@ function makeTokeiQuestion(q, it) {
   }
   q.choices = shuffle([mkChoice(timeText(it.h, it.m), "time", true)].concat(
     out.map(t => mkChoice(timeText(t[0], t[1]), "time", false))));
+  return q;
+}
+
+function decDistractors(ans, it, n) {
+  const out = [], used = {};
+  used[fmtNum(ans)] = true;
+  const push = v => {
+    v = Math.round(v * 100) / 100;
+    const k = fmtNum(v);
+    if (v > 0 && v < 1000 && !used[k]) { used[k] = true; out.push(v); }
+  };
+  const cand = [ans + 0.1, ans - 0.1, ans * 10, ans / 10, ans + 1, ans - 1, ans + 0.2, ans - 0.2];
+  if (it.op === "+") { cand.push(it.a + it.b + 0.9, Math.abs(it.a - it.b)); }
+  if (it.op === "×") { cand.push(it.a + it.b, it.a * it.b + it.a); }
+  if (it.op === "÷") { cand.push(it.a / it.b + 0.5, it.a - it.b); }
+  shuffle(cand).forEach(push);
+  return out.slice(0, n);
+}
+
+// 小数の読み（4.9 →「よん てん きゅう」）
+function decYomi(n) {
+  const parts = fmtNum(n).split(".");
+  const head = numYomi(parseInt(parts[0], 10));
+  if (parts.length === 1) return head;
+  return head + " てん " + parts[1].split("").map(c => numYomi(parseInt(c, 10))).join(" ");
+}
+const OP_YOMI = { "+": "たす", "×": "かける", "÷": "わる" };
+
+function makeShosuQuestion(q, it) {
+  const ans = decValue(it.op, it.a, it.b);
+  q.label = "こたえは？";
+  q.main  = { text: fmtNum(it.a) + " " + it.op + " " + fmtNum(it.b), kind: "num" };
+  q.speak = decYomi(it.a) + " " + OP_YOMI[it.op] + " " + decYomi(it.b) + " は？";
+  q.speakAfter = "こたえは " + decYomi(ans);
+  q.choices = shuffle([mkChoice(fmtNum(ans), "num", true)].concat(
+    decDistractors(ans, it, 3).map(v => mkChoice(fmtNum(v), "num", false))));
+  return q;
+}
+
+// 分数の読み（2/3 →「さんぶんの に」）
+function fracYomi(n, d) { return numYomi(d) + "ぶんの " + numYomi(n); }
+
+function makeBunsuQuestion(q, it) {
+  q.label = "いろが ついているのは？";
+  q.pie   = { n: it.n, d: it.d };
+  q.speakJa = "いろが ついているのは？";
+  q.speakAfter = fracYomi(it.n, it.d);
+  const val = it.n / it.d;
+  const rest = BUNSU.filter(f => !(f[0] === it.n && f[1] === it.d));
+  // ダミーは「同じ分母（数えまちがい）」を1つと、「見た目が近いもの」を2つ。
+  // 全部を近い値にすると、分母を数える練習ではなく見た目あてっこになる
+  const same = shuffle(rest.filter(f => f[1] === it.d));
+  const near = rest.slice().sort((x, y) =>
+    Math.abs(x[0] / x[1] - val) - Math.abs(y[0] / y[1] - val));
+  const picked = [];
+  const used = {};
+  const add = f => {
+    if (!f) return;
+    const k = fracText(f);
+    if (used[k] || picked.length >= 3) return;
+    used[k] = true; picked.push(f);
+  };
+  add(same[0]);
+  shuffle(near.slice(0, 8)).forEach(add);
+  near.forEach(add);
+  const frac = (n, d, ok) => {
+    const c = mkChoice(n + "/" + d, "frac", ok);
+    c.n = n; c.d = d;
+    return c;
+  };
+  q.choices = shuffle([frac(it.n, it.d, true)].concat(
+    picked.map(f => frac(f[0], f[1], false))));
+  return q;
+}
+
+function eigoDistractors(target, key, n) {
+  const same   = EIGO.filter(x => x.en !== target.en && x.c === target.c);
+  const others = EIGO.filter(x => x.en !== target.en && x.c !== target.c);
+  const cand = shuffle(same).concat(shuffle(others));
+  const out = [], used = {};
+  used[target[key]] = true;
+  for (const c of cand) {
+    if (used[c[key]]) continue;
+    used[c[key]] = true;
+    out.push(c);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+function makeEigoQuestion(q, it) {
+  const w = it.w;
+  if (it.qtype === "ja2en") {
+    q.label = "えいごで どれ？";
+    q.emoji = w.e;
+    q.main  = { text: w.ja, kind: "yomi" };
+    q.speak = w.say || w.ja;
+    q.speakAfterEn = w.en;   // 正解したら、その英単語を聞かせる
+    q.choices = shuffle([mkChoice(w.en, "en", true)].concat(
+      eigoDistractors(w, "en", 3).map(x => mkChoice(x.en, "en", false))));
+  } else {
+    // 絵文字は答えそのものになってしまうので出さない
+    q.label = "どういう いみ？";
+    q.main  = { text: w.en, kind: "en" };
+    q.speakEn = w.en;
+    q.speakJa = "どういう いみかな？";   // 英語ボイスが無い端末では、こちらだけ鳴る
+    q.choices = shuffle([mkChoice(w.ja, "yomi", true)].concat(
+      eigoDistractors(w, "ja", 3).map(x => mkChoice(x.ja, "yomi", false))));
+  }
+  return q;
+}
+
+const ALL_PRODUCTS = (() => {
+  const set = {};
+  for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) set[a * b] = true;
+  return Object.keys(set).map(Number);
+})();
+
+// ダミーは3種類を1つずつ。
+//  ①段ちがい（9×7に対する 9×6＝ans-9）… 九九でいちばん起きるまちがい
+//  ②1〜2ちがい … 数え間違い
+//  ③まったく別の九九の答え … 全部が近い数だと、そもそも見分けがつかず苦行になる
+function numDistractors(ans, a, b, n) {
+  const used = {}; used[ans] = true;
+  const out = [];
+  const push = v => {
+    if (v > 0 && v <= 81 && !used[v]) { used[v] = true; out.push(v); return true; }
+    return false;
+  };
+  const rowShift = shuffle([ans + a, ans - a, ans + b, ans - b]);
+  const near     = shuffle([ans + 1, ans - 1, ans + 2, ans - 2]);
+  const others   = shuffle(ALL_PRODUCTS).filter(v => Math.abs(v - ans) > 2);
+  for (const v of rowShift) if (push(v)) break;
+  for (const v of near)     if (push(v)) break;
+  for (const v of others)   if (push(v)) break;
+  for (const v of rowShift.concat(near, others)) { if (out.length >= n) break; push(v); }
+  return shuffle(out).slice(0, n);
+}
+
+function makeKukuQuestion(q, it) {
+  const ans = it.a * it.b;
+  q.label = "こたえは？";
+  q.main  = { text: it.a + " × " + it.b, kind: "num" };
+  q.speak = numYomi(it.a) + " かける " + numYomi(it.b) + " は？";
+  q.speakAfter = numYomi(ans);   // 正解したら答えだけを言う
+  q.choices = shuffle([mkChoice(String(ans), "num", true)].concat(
+    numDistractors(ans, it.a, it.b, 3).map(v => mkChoice(String(v), "num", false))));
   return q;
 }
 
@@ -2049,6 +2196,6 @@ async function checkVersion() {
 }
 window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
-<script src="game.js?v=2026-09-15-8"></script>
+<script src="game.js?v=2026-09-15-9"></script>
 </body>
 </html>

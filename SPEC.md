@@ -245,6 +245,41 @@ Web Speech API（日本語ボイス）。開発機には日本語4種（Ayumi / 
 設定の形を変えたときは `settings.sv` を上げる。`store.load()` の判定は
 **保存されていた値**（`saved.sv`）で行うこと。既定値と混ぜたあとに見ると必ず一致して移行が走らない。
 
+## 変更したら必ず走らせる自己点検
+
+**範囲を指定した一括置換は、範囲内の無関係な関数を巻き添えで消す。**
+構文エラーにならないので気づきにくい（実際に `timeText` と、さらに
+`makeKukuQuestion` / `makeEigoQuestion` / `makeShosuQuestion` / `makeBunsuQuestion` ほか
+7つの関数を消したまま公開してしまった）。編集のあとは必ずこの2つを通すこと。
+
+### 1. 構文チェック（node が入っている）
+
+```
+python -c "import io;s=io.open('index.html',encoding='utf-8').read();a=s.index('<script>
+')+9;b=s.index('</script>',a);io.open('_check.js','w',encoding='utf-8',newline='
+').write(s[a:b])"
+node --check _check.js && node --check data.js && node --check game.js && node --check sw.js
+```
+
+インラインscriptは `<script>` から **最初の** `</script>` までを切り出す
+（`rindex` だと `<script src="game.js">` の閉じタグを拾って誤検知する）。
+
+### 2. 全出題タイプのスモークテスト（ブラウザのコンソールで）
+
+```js
+QTYPES.forEach(t => {
+  const it = ITEMS.find(i => i.qtype === t.id);
+  try {
+    const q = makeQuestion(it);
+    console.log(t.id, q.choices.length === 4 && q.choices.filter(c => c.correct).length === 1 ? "ok" : "NG");
+  } catch (e) { console.log(t.id, "THROW", e.message); }
+});
+```
+
+さらに、教科チップを all / kanji / eigo / kuku / shosu / bunsu / tokei と切り替えて
+「はじめる」が実際に始まるところまで見る。**関数が消えていても構文は通るので、
+画面を触らないと分からない。**
+
 ## 版の管理とキャッシュ（iOS 対策）
 
 iOS のホーム画面アプリは、いちど掴んだ版をなかなか手放さない。そのため：
