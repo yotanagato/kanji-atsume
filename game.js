@@ -41,7 +41,9 @@ const fishGame = (() => {
 
   function fishFont(text, kind) {
     if (kind === "kanji") return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
-    if (kind === "num")   return 'bold 28px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
+    // 「3じ15ふん」のような長い答えもあるので、数字も長さで縮める
+    if (kind === "num")   return 'bold ' + (text.length <= 3 ? 28 : text.length <= 5 ? 23 : 19) +
+                                 'px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
     if (kind === "en")    return 'bold ' + (text.length <= 3 ? 26 : text.length <= 5 ? 23 : 20) + 'px "Segoe UI","Helvetica Neue",Arial,sans-serif';
     const n = text.length;
     const size = n <= 2 ? 25 : n <= 4 ? 22 : 18;
@@ -89,7 +91,8 @@ const fishGame = (() => {
       }
       return {
         choice: c, text: text, kind: c.kind, n: c.n, d: c.d,
-        w: w, h: Math.round(w * 0.58),
+        // 横に長い魚ほど縦も伸びてレーンが重なるので、高さに上限をつける
+        w: w, h: Math.min(Math.round(w * 0.58), 62),
         x: 0, laneY: 0, phase: Math.random() * Math.PI * 2,
         speed: 0.45 + Math.random() * 0.6,
         dir: Math.random() < 0.5 ? 1 : -1,

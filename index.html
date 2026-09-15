@@ -188,6 +188,7 @@
   }
   .q-bar .q-num { font-size: clamp(34px, 10vw, 52px); }
   .choice .num { font-size: clamp(40px, 12vw, 64px); font-weight: bold; }
+  .choice .num.long { font-size: clamp(22px, 6.5vw, 34px); }
   .q-en {
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: clamp(40px, 12vw, 66px); font-weight: bold; color: #3a3226; letter-spacing: 0.01em;
@@ -217,6 +218,10 @@
   }
   .erow .ja { flex: 1; font-size: 16px; color: #6b5a46; text-align: left; }
   .erow .mk2 { font-size: 15px; white-space: nowrap; }
+  .erow .jk {
+    font-family: "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif;
+    font-size: 22px; font-weight: bold; color: #3a3226; flex: 0 0 104px;
+  }
 
   /* ===== くく表 ===== */
   #kuku-table { width: 100%; display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding-bottom: 12px; }
@@ -459,7 +464,7 @@
   <div class="modal" id="modal"></div>
 </div>
 
-<script src="data.js"></script>
+<script src="data.js?v=2026-09-15-5"></script>
 <script>
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
@@ -511,6 +516,7 @@ const SUBJECTS = [
   { id: "kanji", label: "✏️ かんじ" },
   { id: "eigo",  label: "🔤 えいご" },
   { id: "kuku",  label: "✖️ くく" },
+  { id: "tokei", label: "🕐 とけい" },
   { id: "shosu", label: "🔢 しょうすう" },
   { id: "bunsu", label: "🥧 ぶんすう" }
 ];
@@ -519,12 +525,20 @@ const QTYPES = [
   { id: "y2k",  subject: "kanji", label: "よみ→かんじ" },
   { id: "k2y",  subject: "kanji", label: "かんじ→よみ" },
   { id: "word", subject: "kanji", label: "ことば" },
+  { id: "juku", subject: "kanji", label: "じゅくご" },
   { id: "mul",   subject: "kuku", label: "かけざん" },
   { id: "ja2en", subject: "eigo", label: "にほんご→えいご" },
   { id: "en2ja", subject: "eigo", label: "えいご→にほんご" },
   { id: "dec",   subject: "shosu", label: "しょうすうの けいさん" },
-  { id: "frac",  subject: "bunsu", label: "ぶんすう" }
+  { id: "frac",  subject: "bunsu", label: "ぶんすう" },
+  { id: "read",  subject: "tokei", label: "とけいを よむ" }
 ];
+
+// 漢字1字につき1マス作るのは この3つだけ（じゅくご は字ではなく語のマス）
+const KANJI_CHAR_QTYPES = ["y2k", "k2y", "word"];
+
+// とけいの「ちょうど」「はん」は もう読めるので出さない
+const TOKEI_MINUTES = [5, 10, 15, 20, 25, 35, 40, 45, 50, 55];
 
 // 数字のひらがな読み（読み上げ用）
 const NUM_YOMI = ["ゼロ","いち","に","さん","よん","ご","ろく","なな","はち","きゅう"];
@@ -538,7 +552,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-14-6";
+const APP_VERSION = "2026-09-15-5";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -552,10 +566,21 @@ const STAMP_POOL = ["🐶","🐱","🐰","🦊","🐻","🐼","🐯","🦁","�
 function buildAllItems() {
   const out = [];
   KANJI.forEach(k => {
-    qtypesOf("kanji").forEach(t => {
-      out.push({ id: "kanji:" + k.k + ":" + t.id, subject: "kanji", qtype: t.id, k: k });
+    KANJI_CHAR_QTYPES.forEach(t => {
+      out.push({ id: "kanji:" + k.k + ":" + t, subject: "kanji", qtype: t, k: k });
     });
   });
+  JUKUGO.forEach(j => {
+    out.push({ id: "kanji:" + j[0] + ":juku", subject: "kanji", qtype: "juku", j: j[0], y: j[1] });
+  });
+  // とけいは「できた/できていない」を記録しない（track:false）。
+  // ちょうど・はん以外から毎回ランダムに当たるだけでよい、という方針
+  for (let h = 1; h <= 12; h++) {
+    TOKEI_MINUTES.forEach(m => {
+      out.push({ id: "tokei:" + h + "-" + m + ":read", subject: "tokei", qtype: "read",
+                 h: h, m: m, track: false });
+    });
+  }
   EIGO.forEach(w => {
     qtypesOf("eigo").forEach(t => {
       out.push({ id: "eigo:" + w.en + ":" + t.id, subject: "eigo", qtype: t.id, w: w });
@@ -577,9 +602,11 @@ function buildAllItems() {
   return out;
 }
 const ITEMS = buildAllItems();
+// 記録をとるマスだけ（進み具合の分母に使う）
+const TRACKED = ITEMS.filter(i => i.track !== false);
 
 // 同じ見出し（同じ漢字）を1セットに何度も出さないためのキー
-function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.w ? item.w.en : item.id); }
+function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.w ? item.w.en : item.j ? item.j : item.id); }
 function itemsFor(subject, refName) {
   return ITEMS.filter(i => i.subject === subject && refKey(i) === subject + ":" + refName);
 }
@@ -918,15 +945,15 @@ function buildPool() {
 
 // にがて＝箱1にいて、1回でもまちがえたマス（絞り込みは無視して全部から拾う）
 function reviewPool() {
-  return ITEMS.filter(i => getBox(i.id) === 1 && statOf(i.id).ng > 0);
+  return TRACKED.filter(i => getBox(i.id) === 1 && statOf(i.id).ng > 0);
 }
 
-function doneCount() { return ITEMS.filter(i => getBox(i.id) === 3).length; }
+function doneCount() { return TRACKED.filter(i => getBox(i.id) === 3).length; }
 
 function renderPoolInfo() {
   const pool = buildPool();
   const rev = reviewPool();
-  const info = "いま " + pool.length + "マス ／ できた " + doneCount() + "／" + ITEMS.length;
+  const info = "いま " + pool.length + "マス ／ できた " + doneCount() + "／" + TRACKED.length;
   document.getElementById("pool-info").textContent = info;
   const info2 = document.getElementById("pool-info2");
   if (info2) info2.textContent = info;
@@ -1000,6 +1027,83 @@ function makeQuestion(item, retry) {
   if (item.subject === "eigo")  return makeEigoQuestion(q, item);
   if (item.subject === "shosu") return makeShosuQuestion(q, item);
   if (item.subject === "bunsu") return makeBunsuQuestion(q, item);
+  if (item.subject === "tokei") return makeTokeiQuestion(q, item);
+  return q;
+}
+
+/* ---- じゅくご（熟語→よみ） ---- */
+function makeJukuQuestion(q, it) {
+  q.label = "なんて よむ？";
+  q.main  = { text: it.j, kind: "kanji" };
+  q.speakJa = "なんて よむかな？";   // 熟語そのものを読むと答えになる
+  q.speakAfter = it.y;
+  const cand = shuffle(JUKUGO.filter(x => x[1] !== it.y));
+  const out = [], used = {};
+  used[it.y] = true;
+  for (const x of cand) {
+    if (used[x[1]]) continue;
+    used[x[1]] = true;
+    out.push(x[1]);
+    if (out.length >= 3) break;
+  }
+  q.choices = shuffle([mkChoice(it.y, "yomi", true)].concat(
+    out.map(y => mkChoice(y, "yomi", false))));
+  return q;
+}
+
+/* ---- とけい ---- */
+const HOUR_YOMI = ["", "いちじ","にじ","さんじ","よじ","ごじ","ろくじ",
+                   "しちじ","はちじ","くじ","じゅうじ","じゅういちじ","じゅうにじ"];
+const MIN_YOMI = { 5:"ごふん", 10:"じゅっぷん", 15:"じゅうごふん", 20:"にじゅっぷん",
+                   25:"にじゅうごふん", 35:"さんじゅうごふん", 40:"よんじゅっぷん",
+                   45:"よんじゅうごふん", 50:"ごじゅっぷん", 55:"ごじゅうごふん" };
+function timeText(h, m) { return h + "じ" + m + "ふん"; }
+function timeYomi(h, m) { return HOUR_YOMI[h] + " " + (MIN_YOMI[m] || m + "ふん"); }
+
+// 時計の絵（SVG）。長い針が分、短くて太い針が時
+function clockSVG(h, m) {
+  const size = 120, cx = 60, cy = 60, r = 54;
+  let out = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">';
+  out += '<circle cx="60" cy="60" r="' + r + '" fill="#fff" stroke="#d2603a" stroke-width="4"/>';
+  for (let i = 1; i <= 12; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 6;
+    const tx = cx + Math.cos(a) * (r - 8), ty = cy + Math.sin(a) * (r - 8);
+    out += '<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="' + (i % 3 === 0 ? 3 : 2) + '" fill="#e0b84d"/>';
+    const nx = cx + Math.cos(a) * (r - 17), ny = cy + Math.sin(a) * (r - 17);
+    out += '<text x="' + nx.toFixed(1) + '" y="' + (ny + 4.5).toFixed(1) + '" font-size="12" font-weight="bold" ' +
+           'text-anchor="middle" fill="#6b5a46" font-family="sans-serif">' + i + '</text>';
+  }
+  const ma = -Math.PI / 2 + (m / 60) * Math.PI * 2;
+  const ha = -Math.PI / 2 + ((h % 12) / 12 + m / 720) * Math.PI * 2;
+  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ha) * 26).toFixed(1) + '" y2="' + (cy + Math.sin(ha) * 26).toFixed(1) +
+         '" stroke="#3a3226" stroke-width="7" stroke-linecap="round"/>';
+  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ma) * 40).toFixed(1) + '" y2="' + (cy + Math.sin(ma) * 40).toFixed(1) +
+         '" stroke="#ff9b26" stroke-width="4.5" stroke-linecap="round"/>';
+  out += '<circle cx="60" cy="60" r="4" fill="#3a3226"/></svg>';
+  return out;
+}
+
+function makeTokeiQuestion(q, it) {
+  q.label = "なんじ なんぷん？";
+  q.clock = { h: it.h, m: it.m };
+  q.speakJa = "なんじ なんぷんかな？";
+  q.speakAfter = timeYomi(it.h, it.m);
+  // ダミーは「分だけちがう」「時だけちがう」「両方ちがう」を1つずつ
+  const used = {}; used[timeText(it.h, it.m)] = true;
+  const out = [];
+  const add = (h, m) => {
+    h = ((h - 1 + 12) % 12) + 1;
+    const t = timeText(h, m);
+    if (used[t] || out.length >= 3) return;
+    used[t] = true; out.push([h, m]);
+  };
+  const otherM = shuffle(TOKEI_MINUTES.filter(m => m !== it.m));
+  add(it.h, otherM[0]);
+  add(it.h + (Math.random() < 0.5 ? 1 : -1), it.m);
+  add(it.h + 2, otherM[1]);
+  while (out.length < 3) add(1 + Math.floor(Math.random() * 12), otherM[Math.floor(Math.random() * otherM.length)]);
+  q.choices = shuffle([mkChoice(timeText(it.h, it.m), "num", true)].concat(
+    out.map(t => mkChoice(timeText(t[0], t[1]), "num", false))));
   return q;
 }
 
@@ -1152,6 +1256,7 @@ function makeKukuQuestion(q, it) {
 }
 
 function makeKanjiQuestion(q, it) {
+  if (it.qtype === "juku") return makeJukuQuestion(q, it);
   const k = it.k;
   if (it.qtype === "word") {
     const pair = k.w[Math.floor(Math.random() * k.w.length)];
@@ -1181,6 +1286,8 @@ function makeKanjiQuestion(q, it) {
 
 // 結果・図鑑に出す「この問題は何だったか」の1行
 function itemCaption(item) {
+  if (item.qtype === "juku")   return item.j + "（" + item.y + "）";
+  if (item.subject === "tokei") return timeText(item.h, item.m);
   if (item.subject === "kanji") {
     return item.k.y + " ／ " + item.k.w[0][0] + "（" + item.k.w[0][1] + "）";
   }
@@ -1199,6 +1306,8 @@ function itemCaption(item) {
   return "";
 }
 function itemHead(item) {
+  if (item.qtype === "juku")    return item.j;
+  if (item.subject === "tokei") return "🕐";
   if (item.subject === "kanji") return item.k.k;
   if (item.subject === "kuku")  return item.a + "×" + item.b;
   if (item.subject === "eigo")  return item.w.e;
@@ -1258,6 +1367,13 @@ function fillPrompt(box, q) {
     const em = document.createElement("div");
     em.className = "q-emoji"; em.textContent = q.emoji;
     box.appendChild(em);
+  }
+
+  if (q.clock) {
+    const cl = document.createElement("div");
+    cl.className = "q-pie";
+    cl.innerHTML = clockSVG(q.clock.h, q.clock.m);
+    box.appendChild(cl);
   }
 
   if (q.pie) {
@@ -1350,11 +1466,12 @@ function renderQuestion() {
 ================================================================ */
 function recordFirstTry(q, ok) {
   const id = q.id;
-  const st = store.data.stat[id] || { ok: 0, ng: 0 };
-  if (ok) st.ok++; else st.ng++;
-  store.data.stat[id] = st;
-
-  store.data.box[id] = ok ? Math.min(3, getBox(id) + 1) : 1;
+  if (q.item.track !== false) {
+    const st = store.data.stat[id] || { ok: 0, ng: 0 };
+    if (ok) st.ok++; else st.ng++;
+    store.data.stat[id] = st;
+    store.data.box[id] = ok ? Math.min(3, getBox(id) + 1) : 1;
+  }
   if (ok) store.data.stars++;
   store.addRecord(ok);
   store.save();
@@ -1406,7 +1523,10 @@ function renderCardQuestion(q) {
     const span = document.createElement("span");
     span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : c.kind === "en" ? "en" : "yomi";
     if (c.kind === "frac") { span.className = "num"; span.innerHTML = fracHTML(c.n, c.d); }
-    else span.textContent = c.text;
+    else {
+      span.textContent = c.text;
+      if (c.kind === "num" && c.text.length > 3) span.classList.add("long");
+    }
     b.setAttribute("aria-label", c.text);
     b.appendChild(span);
     b.addEventListener("click", () => onCardChoice(b, c));
@@ -1492,38 +1612,49 @@ function finishSession() {
    3つぜんぶ できたら 金色＋⭐。
 ================================================================ */
 function kanjiProgress(k) {
-  const boxes = qtypesOf("kanji").map(t => {
-    const id = "kanji:" + k.k + ":" + t.id;
-    return { qtype: t.id, label: t.label, box: getBox(id), tried: !!store.data.stat[id] };
+  const boxes = KANJI_CHAR_QTYPES.map(t => {
+    const id = "kanji:" + k.k + ":" + t;
+    return { qtype: t, label: qtypeLabel(t), box: getBox(id), tried: !!store.data.stat[id] };
   });
   return { boxes: boxes, done: boxes.filter(b => b.box === 3).length, tried: boxes.some(b => b.tried) };
 }
 
 let zukanTab = "kanji";
 
+// とけいは記録をとらないので図鑑に出さない
+const ZUKAN_TABS = [
+  { id: "kanji", label: "✏️ かんじ" },
+  { id: "juku",  label: "🧩 じゅくご" },
+  { id: "eigo",  label: "🔤 えいご" },
+  { id: "kuku",  label: "✖️ くく" },
+  { id: "shosu", label: "🔢 しょうすう" },
+  { id: "bunsu", label: "🥧 ぶんすう" }
+];
+
 function renderZukan() {
   const tabs = document.getElementById("zukan-tabs");
   tabs.innerHTML = "";
-  tabs.hidden = SUBJECTS.length < 2;
-  SUBJECTS.forEach(sub => {
+  tabs.hidden = false;
+  ZUKAN_TABS.forEach(t => {
     const b = document.createElement("button");
-    b.className = "chip" + (zukanTab === sub.id ? " on" : "");
-    b.textContent = sub.label;
-    b.addEventListener("click", () => { sound.tap(); zukanTab = sub.id; renderZukan(); });
+    b.className = "chip" + (zukanTab === t.id ? " on" : "");
+    b.textContent = t.label;
+    b.addEventListener("click", () => { sound.tap(); zukanTab = t.id; renderZukan(); });
     tabs.appendChild(b);
   });
   if (zukanTab === "kuku")       renderZukanKuku();
   else if (zukanTab === "eigo")  renderZukanEigo();
-  else if (zukanTab === "shosu" || zukanTab === "bunsu") renderZukanList(zukanTab);
+  else if (zukanTab === "shosu" || zukanTab === "bunsu" || zukanTab === "juku") renderZukanList(zukanTab);
   else                           renderZukanKanji();
 }
 
 /* しょうすう・ぶんすう は式が並ぶだけなので、共通の一覧で出す */
-function renderZukanList(subject) {
+function renderZukanList(key) {
   showZukanBox("eigo");
   const box = document.getElementById("eigo-list");
   box.innerHTML = "";
-  const list = ITEMS.filter(i => i.subject === subject);
+  const list = key === "juku" ? ITEMS.filter(i => i.qtype === "juku")
+                              : ITEMS.filter(i => i.subject === key);
   const done = list.filter(i => getBox(i.id) === 3).length;
   document.getElementById("zukan-legend").textContent = "できた " + done + " ／ " + list.length + "マス";
 
@@ -1531,7 +1662,12 @@ function renderZukanList(subject) {
     const b = getBox(i.id), tried = !!store.data.stat[i.id];
     const row = document.createElement("button");
     row.className = "erow " + (b === 3 ? "b3" : b === 2 ? "b2" : tried ? "" : "new");
-    if (subject === "bunsu") {
+    if (key === "juku") {
+      row.innerHTML =
+        '<span class="jk">' + i.j + '</span>' +
+        '<span class="ja">' + i.y + '</span>' +
+        '<span class="mk2">' + (b === 3 ? "⭐" : b === 2 ? "🔵" : tried ? "🔁" : "・") + '</span>';
+    } else if (key === "bunsu") {
       row.innerHTML = '<span class="ee" style="width:42px">' + pieSVG(i.n, i.d) + '</span>' +
         '<span class="ja">' + fracHTML(i.n, i.d) + '</span>' +
         '<span class="mk2">' + (b === 3 ? "⭐" : b === 2 ? "🔵" : tried ? "🔁" : "・") + '</span>';
@@ -1958,7 +2094,7 @@ function renderSettings() {
   c2.className = "card";
   c2.innerHTML = "<h3>データ</h3>" +
     '<div style="font-size:15px;color:#6b5a46;margin-bottom:8px">' +
-      "ほし " + store.data.stars + " ／ できたマス " + doneCount() + "／" + ITEMS.length +
+      "ほし " + store.data.stars + " ／ できたマス " + doneCount() + "／" + TRACKED.length +
     "</div>";
   const del = document.createElement("button");
   del.className = "big-btn danger";
@@ -2031,6 +2167,6 @@ async function checkVersion() {
 }
 window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
-<script src="game.js"></script>
+<script src="game.js?v=2026-09-15-5"></script>
 </body>
 </html>

@@ -1,10 +1,16 @@
 """版を1つ進める。
 
-index.html の APP_VERSION / version.json / sw.js のキャッシュ名を、
-必ず同じ値に揃えて書き換える。ここがズレると、
+次の4か所を、必ず同じ値に揃えて書き換える。ここがズレると、
 起動時の版チェックが毎回「古い」と判断して読み直しを繰り返す。
 
-    python bump-version.py            → 今日の日付で連番を1つ進める
+  1. index.html の APP_VERSION
+  2. index.html の <script src="data.js?v=...">／<script src="game.js?v=...">
+     （これが無いと index.html だけ新しくなり、外部JSはブラウザの
+      キャッシュから読まれて修正が反映されない）
+  3. version.json
+  4. sw.js のキャッシュ名
+
+    python bump-version.py              → 今日の日付で連番を1つ進める
     python bump-version.py 2026-10-01-1 → 値を指定する
 
 push する前に実行すること。
@@ -40,9 +46,17 @@ def main():
     ver = sys.argv[1] if len(sys.argv) > 1 else next_version()
 
     s = io.open(INDEX, encoding="utf-8").read()
-    s, n = re.subn(r'const APP_VERSION = "[^"]+"', 'const APP_VERSION = "%s"' % ver, s)
+
+    s, n = re.subn(r'const APP_VERSION = "[^"]+"',
+                   'const APP_VERSION = "%s"' % ver, s)
     if n != 1:
         raise SystemExit("index.html の APP_VERSION が見つかりません")
+
+    s, n = re.subn(r'src="(data|game)\.js(\?v=[^"]*)?"',
+                   lambda m: 'src="%s.js?v=%s"' % (m.group(1), ver), s)
+    if n != 2:
+        raise SystemExit("index.html の data.js / game.js の script タグが見つかりません")
+
     io.open(INDEX, "w", encoding="utf-8", newline="\n").write(s)
 
     io.open(VERSION_JSON, "w", encoding="utf-8", newline="\n").write('{ "v": "%s" }\n' % ver)

@@ -1,4 +1,4 @@
-const CACHE = "manabi-2026-09-14-6";
+const CACHE = "manabi-2026-09-15-5";
 const ASSETS = ["./", "./index.html", "./data.js", "./game.js", "./manifest.json", "./version.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
