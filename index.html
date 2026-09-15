@@ -179,6 +179,10 @@
   .erow .frac { font-size: 18px; color: #3a3226; }
   .result-row .k .frac { font-size: 15px; }
 
+  .q-clock { width: clamp(168px, 46vw, 240px); line-height: 0; }
+  .q-clock svg { width: 100%; height: auto; }
+  .q-bar .q-clock { width: clamp(130px, 36vw, 180px); }
+
   .q-pie { width: clamp(104px, 30vw, 150px); line-height: 0; }
   .q-pie svg { width: 100%; height: auto; }
   .q-bar .q-pie { width: clamp(78px, 22vw, 110px); }
@@ -189,6 +193,7 @@
   .q-bar .q-num { font-size: clamp(34px, 10vw, 52px); }
   .choice .num { font-size: clamp(40px, 12vw, 64px); font-weight: bold; }
   .choice .num.long { font-size: clamp(22px, 6.5vw, 34px); }
+  .choice .time { font-size: clamp(30px, 9vw, 48px); font-weight: bold; letter-spacing: 0.02em; }
   .q-en {
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: clamp(40px, 12vw, 66px); font-weight: bold; color: #3a3226; letter-spacing: 0.01em;
@@ -464,7 +469,7 @@
   <div class="modal" id="modal"></div>
 </div>
 
-<script src="data.js?v=2026-09-15-5"></script>
+<script src="data.js?v=2026-09-15-8"></script>
 <script>
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
@@ -537,8 +542,13 @@ const QTYPES = [
 // 漢字1字につき1マス作るのは この3つだけ（じゅくご は字ではなく語のマス）
 const KANJI_CHAR_QTYPES = ["y2k", "k2y", "word"];
 
-// とけいの「ちょうど」「はん」は もう読めるので出さない
-const TOKEI_MINUTES = [5, 10, 15, 20, 25, 35, 40, 45, 50, 55];
+// とけいの「ちょうど（0分）」「はん（30分）」は もう読めるので出さない。
+// それ以外は1分きざみ（32分・58分 のような半端な時刻も出す）
+const TOKEI_MINUTES = (() => {
+  const out = [];
+  for (let m = 1; m <= 59; m++) if (m !== 30) out.push(m);
+  return out;
+})();
 
 // 数字のひらがな読み（読み上げ用）
 const NUM_YOMI = ["ゼロ","いち","に","さん","よん","ご","ろく","なな","はち","きゅう"];
@@ -552,7 +562,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-15-5";
+const APP_VERSION = "2026-09-15-8";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -1054,32 +1064,47 @@ function makeJukuQuestion(q, it) {
 /* ---- とけい ---- */
 const HOUR_YOMI = ["", "いちじ","にじ","さんじ","よじ","ごじ","ろくじ",
                    "しちじ","はちじ","くじ","じゅうじ","じゅういちじ","じゅうにじ"];
-const MIN_YOMI = { 5:"ごふん", 10:"じゅっぷん", 15:"じゅうごふん", 20:"にじゅっぷん",
-                   25:"にじゅうごふん", 35:"さんじゅうごふん", 40:"よんじゅっぷん",
-                   45:"よんじゅうごふん", 50:"ごじゅっぷん", 55:"ごじゅうごふん" };
-function timeText(h, m) { return h + "じ" + m + "ふん"; }
-function timeYomi(h, m) { return HOUR_YOMI[h] + " " + (MIN_YOMI[m] || m + "ふん"); }
+// 「3:05」のようにコロン区切りで出す
+function timeText(h, m) { return h + ":" + (m < 10 ? "0" + m : m); }
 
-// 時計の絵（SVG）。長い針が分、短くて太い針が時
+// 分の読みは不規則。1ぷん・3ぷん・4ぷん・6ぷん・8ぷん・10ぷん系が「ぷん」、
+// 2・5・7・9 が「ふん」。十の位は 20→にじゅっぷん のように変わる
+const MIN_TENS = ["", "じゅう", "にじゅう", "さんじゅう", "よんじゅう", "ごじゅう"];
+const MIN_ONES = ["", "いっ", "に", "さん", "よん", "ご", "ろっ", "なな", "はっ", "きゅう"];
+const MIN_SUFFIX = ["", "ぷん", "ふん", "ぷん", "ぷん", "ふん", "ぷん", "ふん", "ぷん", "ふん"];
+function minYomi(m) {
+  const t = Math.floor(m / 10), o = m % 10;
+  if (o === 0) return MIN_TENS[t].replace(/じゅう$/, "じゅっぷん");
+  return MIN_TENS[t] + MIN_ONES[o] + MIN_SUFFIX[o];
+}
+function timeYomi(h, m) { return HOUR_YOMI[h] + " " + minYomi(m); }
+
+// 時計の絵（SVG）
+//   短い針と数字＝赤、長い針と目もり＝青。1分ごとに小さなドットを打つ
 function clockSVG(h, m) {
-  const size = 120, cx = 60, cy = 60, r = 54;
+  const cx = 60, cy = 60, r = 54;
   let out = '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">';
-  out += '<circle cx="60" cy="60" r="' + r + '" fill="#fff" stroke="#d2603a" stroke-width="4"/>';
+  out += '<circle cx="60" cy="60" r="' + r + '" fill="#fff" stroke="#1565a0" stroke-width="3"/>';
+  for (let i = 0; i < 60; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 30;
+    const big = i % 5 === 0;
+    const rr = big ? 2.3 : 0.9;
+    const tx = cx + Math.cos(a) * (r - 6), ty = cy + Math.sin(a) * (r - 6);
+    out += '<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="' + rr + '" fill="#1565a0"/>';
+  }
   for (let i = 1; i <= 12; i++) {
     const a = -Math.PI / 2 + i * Math.PI / 6;
-    const tx = cx + Math.cos(a) * (r - 8), ty = cy + Math.sin(a) * (r - 8);
-    out += '<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="' + (i % 3 === 0 ? 3 : 2) + '" fill="#e0b84d"/>';
-    const nx = cx + Math.cos(a) * (r - 17), ny = cy + Math.sin(a) * (r - 17);
-    out += '<text x="' + nx.toFixed(1) + '" y="' + (ny + 4.5).toFixed(1) + '" font-size="12" font-weight="bold" ' +
-           'text-anchor="middle" fill="#6b5a46" font-family="sans-serif">' + i + '</text>';
+    const nx = cx + Math.cos(a) * (r - 16), ny = cy + Math.sin(a) * (r - 16);
+    out += '<text x="' + nx.toFixed(1) + '" y="' + (ny + 4.6).toFixed(1) + '" font-size="13" font-weight="bold" ' +
+           'text-anchor="middle" fill="#e53935" font-family="sans-serif">' + i + '</text>';
   }
   const ma = -Math.PI / 2 + (m / 60) * Math.PI * 2;
   const ha = -Math.PI / 2 + ((h % 12) / 12 + m / 720) * Math.PI * 2;
-  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ha) * 26).toFixed(1) + '" y2="' + (cy + Math.sin(ha) * 26).toFixed(1) +
-         '" stroke="#3a3226" stroke-width="7" stroke-linecap="round"/>';
-  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ma) * 40).toFixed(1) + '" y2="' + (cy + Math.sin(ma) * 40).toFixed(1) +
-         '" stroke="#ff9b26" stroke-width="4.5" stroke-linecap="round"/>';
-  out += '<circle cx="60" cy="60" r="4" fill="#3a3226"/></svg>';
+  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ha) * 25).toFixed(1) + '" y2="' + (cy + Math.sin(ha) * 25).toFixed(1) +
+         '" stroke="#e53935" stroke-width="7" stroke-linecap="round"/>';
+  out += '<line x1="60" y1="60" x2="' + (cx + Math.cos(ma) * 42).toFixed(1) + '" y2="' + (cy + Math.sin(ma) * 42).toFixed(1) +
+         '" stroke="#1565a0" stroke-width="4" stroke-linecap="round"/>';
+  out += '<circle cx="60" cy="60" r="4" fill="#e53935"/></svg>';
   return out;
 }
 
@@ -1087,171 +1112,28 @@ function makeTokeiQuestion(q, it) {
   q.label = "なんじ なんぷん？";
   q.clock = { h: it.h, m: it.m };
   q.speakJa = "なんじ なんぷんかな？";
+  q.noSpeakButton = true;          // 聞いても答えは分からないので、ボタンは出さない
   q.speakAfter = timeYomi(it.h, it.m);
-  // ダミーは「分だけちがう」「時だけちがう」「両方ちがう」を1つずつ
+  // ダミーは「分が少しちがう」「時だけちがう」「両方ちがう」を1つずつ
   const used = {}; used[timeText(it.h, it.m)] = true;
   const out = [];
   const add = (h, m) => {
     h = ((h - 1 + 12) % 12) + 1;
+    m = (m + 60) % 60;
+    if (m === 0 || m === 30) m = m + 7;
     const t = timeText(h, m);
     if (used[t] || out.length >= 3) return;
     used[t] = true; out.push([h, m]);
   };
-  const otherM = shuffle(TOKEI_MINUTES.filter(m => m !== it.m));
-  add(it.h, otherM[0]);
+  const near = 2 + Math.floor(Math.random() * 6);              // 2〜7分ちがい
+  add(it.h, it.m + (Math.random() < 0.5 ? near : -near));
   add(it.h + (Math.random() < 0.5 ? 1 : -1), it.m);
-  add(it.h + 2, otherM[1]);
-  while (out.length < 3) add(1 + Math.floor(Math.random() * 12), otherM[Math.floor(Math.random() * otherM.length)]);
-  q.choices = shuffle([mkChoice(timeText(it.h, it.m), "num", true)].concat(
-    out.map(t => mkChoice(timeText(t[0], t[1]), "num", false))));
-  return q;
-}
-
-// 小数のまちがいは「小数点の位置」と「0.1ずれ」が定番なので、そこを突く
-function decDistractors(ans, it, n) {
-  const out = [], used = {};
-  used[fmtNum(ans)] = true;
-  const push = v => {
-    v = Math.round(v * 100) / 100;
-    const k = fmtNum(v);
-    if (v > 0 && v < 1000 && !used[k]) { used[k] = true; out.push(v); }
-  };
-  const cand = [ans + 0.1, ans - 0.1, ans * 10, ans / 10, ans + 1, ans - 1, ans + 0.2, ans - 0.2];
-  if (it.op === "+") { cand.push(it.a + it.b + 0.9, Math.abs(it.a - it.b)); }
-  if (it.op === "×") { cand.push(it.a + it.b, it.a * it.b + it.a); }
-  if (it.op === "÷") { cand.push(it.a / it.b + 0.5, it.a - it.b); }
-  shuffle(cand).forEach(push);
-  return out.slice(0, n);
-}
-
-// 小数の読み（4.9 →「よん てん きゅう」）
-function decYomi(n) {
-  const parts = fmtNum(n).split(".");
-  const head = numYomi(parseInt(parts[0], 10));
-  if (parts.length === 1) return head;
-  return head + " てん " + parts[1].split("").map(c => numYomi(parseInt(c, 10))).join(" ");
-}
-const OP_YOMI = { "+": "たす", "×": "かける", "÷": "わる" };
-
-function makeShosuQuestion(q, it) {
-  const ans = decValue(it.op, it.a, it.b);
-  q.label = "こたえは？";
-  q.main  = { text: fmtNum(it.a) + " " + it.op + " " + fmtNum(it.b), kind: "num" };
-  q.speak = decYomi(it.a) + " " + OP_YOMI[it.op] + " " + decYomi(it.b) + " は？";
-  q.speakAfter = "こたえは " + decYomi(ans);
-  q.choices = shuffle([mkChoice(fmtNum(ans), "num", true)].concat(
-    decDistractors(ans, it, 3).map(v => mkChoice(fmtNum(v), "num", false))));
-  return q;
-}
-
-// 分数の読み（2/3 →「さんぶんの に」）
-function fracYomi(n, d) { return numYomi(d) + "ぶんの " + numYomi(n); }
-
-function makeBunsuQuestion(q, it) {
-  q.label = "いろが ついているのは？";
-  q.pie   = { n: it.n, d: it.d };
-  q.speakJa = "いろが ついているのは？";
-  q.speakAfter = fracYomi(it.n, it.d);
-  const val = it.n / it.d;
-  const rest = BUNSU.filter(f => !(f[0] === it.n && f[1] === it.d));
-  // ダミーは「同じ分母（数えまちがい）」を1つと、「見た目が近いもの」を2つ。
-  // 全部を近い値にすると、分母を数える練習ではなく見た目あてっこになる
-  const same = shuffle(rest.filter(f => f[1] === it.d));
-  const near = rest.slice().sort((x, y) =>
-    Math.abs(x[0] / x[1] - val) - Math.abs(y[0] / y[1] - val));
-  const picked = [];
-  const used = {};
-  const add = f => {
-    if (!f) return;
-    const k = fracText(f);
-    if (used[k] || picked.length >= 3) return;
-    used[k] = true; picked.push(f);
-  };
-  add(same[0]);
-  shuffle(near.slice(0, 8)).forEach(add);
-  near.forEach(add);
-  const frac = (n, d, ok) => {
-    const c = mkChoice(n + "/" + d, "frac", ok);
-    c.n = n; c.d = d;
-    return c;
-  };
-  q.choices = shuffle([frac(it.n, it.d, true)].concat(
-    picked.map(f => frac(f[0], f[1], false))));
-  return q;
-}
-
-function eigoDistractors(target, key, n) {
-  const same   = EIGO.filter(x => x.en !== target.en && x.c === target.c);
-  const others = EIGO.filter(x => x.en !== target.en && x.c !== target.c);
-  const cand = shuffle(same).concat(shuffle(others));
-  const out = [], used = {};
-  used[target[key]] = true;
-  for (const c of cand) {
-    if (used[c[key]]) continue;
-    used[c[key]] = true;
-    out.push(c);
-    if (out.length >= n) break;
+  add(it.h + 2 + Math.floor(Math.random() * 3), it.m + 10 + Math.floor(Math.random() * 20));
+  while (out.length < 3) {
+    add(1 + Math.floor(Math.random() * 12), TOKEI_MINUTES[Math.floor(Math.random() * TOKEI_MINUTES.length)]);
   }
-  return out;
-}
-
-function makeEigoQuestion(q, it) {
-  const w = it.w;
-  if (it.qtype === "ja2en") {
-    q.label = "えいごで どれ？";
-    q.emoji = w.e;
-    q.main  = { text: w.ja, kind: "yomi" };
-    q.speak = w.say || w.ja;
-    q.speakAfterEn = w.en;   // 正解したら、その英単語を聞かせる
-    q.choices = shuffle([mkChoice(w.en, "en", true)].concat(
-      eigoDistractors(w, "en", 3).map(x => mkChoice(x.en, "en", false))));
-  } else {
-    // 絵文字は答えそのものになってしまうので出さない
-    q.label = "どういう いみ？";
-    q.main  = { text: w.en, kind: "en" };
-    q.speakEn = w.en;
-    q.speakJa = "どういう いみかな？";   // 英語ボイスが無い端末では、こちらだけ鳴る
-    q.choices = shuffle([mkChoice(w.ja, "yomi", true)].concat(
-      eigoDistractors(w, "ja", 3).map(x => mkChoice(x.ja, "yomi", false))));
-  }
-  return q;
-}
-
-const ALL_PRODUCTS = (() => {
-  const set = {};
-  for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) set[a * b] = true;
-  return Object.keys(set).map(Number);
-})();
-
-// ダミーは3種類を1つずつ。
-//  ①段ちがい（9×7に対する 9×6＝ans-9）… 九九でいちばん起きるまちがい
-//  ②1〜2ちがい … 数え間違い
-//  ③まったく別の九九の答え … 全部が近い数だと、そもそも見分けがつかず苦行になる
-function numDistractors(ans, a, b, n) {
-  const used = {}; used[ans] = true;
-  const out = [];
-  const push = v => {
-    if (v > 0 && v <= 81 && !used[v]) { used[v] = true; out.push(v); return true; }
-    return false;
-  };
-  const rowShift = shuffle([ans + a, ans - a, ans + b, ans - b]);
-  const near     = shuffle([ans + 1, ans - 1, ans + 2, ans - 2]);
-  const others   = shuffle(ALL_PRODUCTS).filter(v => Math.abs(v - ans) > 2);
-  for (const v of rowShift) if (push(v)) break;
-  for (const v of near)     if (push(v)) break;
-  for (const v of others)   if (push(v)) break;
-  for (const v of rowShift.concat(near, others)) { if (out.length >= n) break; push(v); }
-  return shuffle(out).slice(0, n);
-}
-
-function makeKukuQuestion(q, it) {
-  const ans = it.a * it.b;
-  q.label = "こたえは？";
-  q.main  = { text: it.a + " × " + it.b, kind: "num" };
-  q.speak = numYomi(it.a) + " かける " + numYomi(it.b) + " は？";
-  q.speakAfter = numYomi(ans);   // 正解したら答えだけを言う
-  q.choices = shuffle([mkChoice(String(ans), "num", true)].concat(
-    numDistractors(ans, it.a, it.b, 3).map(v => mkChoice(String(v), "num", false))));
+  q.choices = shuffle([mkChoice(timeText(it.h, it.m), "time", true)].concat(
+    out.map(t => mkChoice(timeText(t[0], t[1]), "time", false))));
   return q;
 }
 
@@ -1371,7 +1253,7 @@ function fillPrompt(box, q) {
 
   if (q.clock) {
     const cl = document.createElement("div");
-    cl.className = "q-pie";
+    cl.className = "q-clock";
     cl.innerHTML = clockSVG(q.clock.h, q.clock.m);
     box.appendChild(cl);
   }
@@ -1418,7 +1300,7 @@ function fillPrompt(box, q) {
     box.appendChild(b);
     speakEn(q.speakEn);
   } else if (q.speakJa) {
-    box.appendChild(speakButton(q.speakJa));
+    if (!q.noSpeakButton) box.appendChild(speakButton(q.speakJa));
     speak(q.speakJa);
   }
 }
@@ -1521,7 +1403,7 @@ function renderCardQuestion(q) {
     const b = document.createElement("button");
     b.className = "choice";
     const span = document.createElement("span");
-    span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : c.kind === "en" ? "en" : "yomi";
+    span.className = c.kind === "kanji" ? "kanji" : c.kind === "num" ? "num" : c.kind === "en" ? "en" : c.kind === "time" ? "time" : "yomi";
     if (c.kind === "frac") { span.className = "num"; span.innerHTML = fracHTML(c.n, c.d); }
     else {
       span.textContent = c.text;
@@ -2167,6 +2049,6 @@ async function checkVersion() {
 }
 window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
-<script src="game.js?v=2026-09-15-5"></script>
+<script src="game.js?v=2026-09-15-8"></script>
 </body>
 </html>

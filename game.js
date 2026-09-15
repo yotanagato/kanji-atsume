@@ -42,6 +42,7 @@ const fishGame = (() => {
   function fishFont(text, kind) {
     if (kind === "kanji") return 'bold 30px "Yu Mincho","YuMincho","Hiragino Mincho ProN","MS Mincho",serif';
     // 「3じ15ふん」のような長い答えもあるので、数字も長さで縮める
+    if (kind === "time")  return 'bold 26px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
     if (kind === "num")   return 'bold ' + (text.length <= 3 ? 28 : text.length <= 5 ? 23 : 19) +
                                  'px "Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif';
     if (kind === "en")    return 'bold ' + (text.length <= 3 ? 26 : text.length <= 5 ? 23 : 20) + 'px "Segoe UI","Helvetica Neue",Arial,sans-serif';
