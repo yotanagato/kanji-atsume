@@ -13,3 +13,10 @@
 対象漢字は文部科学省「学年別漢字配当表」1年の80字です。
 
 詳しい仕様は [SPEC.md](SPEC.md) を参照してください。
+
+## 地図データの出典
+
+- 都道府県のかたち：[地球地図日本](https://www.gsi.go.jp/kankyochiri/gm_jpn.html)（国土地理院）
+- 琵琶湖のかたち：[Natural Earth](https://www.naturalearthdata.com/)（パブリックドメイン）
+
+本アプリは非営利の学習用途です。

@@ -52,10 +52,10 @@ def main():
     if n != 1:
         raise SystemExit("index.html の APP_VERSION が見つかりません")
 
-    s, n = re.subn(r'src="(data|game)\.js(\?v=[^"]*)?"',
+    s, n = re.subn(r'src="(data|map|game)\.js(\?v=[^"]*)?"',
                    lambda m: 'src="%s.js?v=%s"' % (m.group(1), ver), s)
-    if n != 2:
-        raise SystemExit("index.html の data.js / game.js の script タグが見つかりません")
+    if n != 3:
+        raise SystemExit("index.html の data.js / map.js / game.js の script タグが見つかりません")
 
     io.open(INDEX, "w", encoding="utf-8", newline="\n").write(s)
 

@@ -179,6 +179,10 @@
   .erow .frac { font-size: 18px; color: #3a3226; }
   .result-row .k .frac { font-size: 15px; }
 
+  .q-shape { width: clamp(150px, 42vw, 210px); line-height: 0; }
+  .q-shape svg { width: 100%; height: auto; }
+  .q-bar .q-shape { width: clamp(126px, 34vw, 168px); }
+
   .q-clock { width: clamp(168px, 46vw, 240px); line-height: 0; }
   .q-clock svg { width: 100%; height: auto; }
   .q-bar .q-clock { width: clamp(130px, 36vw, 180px); }
@@ -469,7 +473,8 @@
   <div class="modal" id="modal"></div>
 </div>
 
-<script src="data.js?v=2026-09-15-10"></script>
+<script src="data.js?v=2026-09-16-2"></script>
+<script src="map.js?v=2026-09-16-2"></script>
 <script>
 const LEVELS = [
   { id: 0, label: "ぜんぶ" },
@@ -522,8 +527,10 @@ const SUBJECTS = [
   { id: "eigo",  label: "🔤 えいご" },
   { id: "kuku",  label: "✖️ くく" },
   { id: "tokei", label: "🕐 とけい" },
+  { id: "chizu", label: "🗾 ちず" },
   { id: "shosu", label: "🔢 しょうすう" },
-  { id: "bunsu", label: "🥧 ぶんすう" }
+  { id: "bunsu", label: "🥧 ぶんすう" },
+  { id: "chizu", label: "🗾 ちず" }
 ];
 
 const QTYPES = [
@@ -536,7 +543,8 @@ const QTYPES = [
   { id: "en2ja", subject: "eigo", label: "えいご→にほんご" },
   { id: "dec",   subject: "shosu", label: "しょうすうの けいさん" },
   { id: "frac",  subject: "bunsu", label: "ぶんすう" },
-  { id: "read",  subject: "tokei", label: "とけいを よむ" }
+  { id: "read",  subject: "tokei", label: "とけいを よむ" },
+  { id: "pref",  subject: "chizu", label: "けんの かたち" }
 ];
 
 // 漢字1字につき1マス作るのは この3つだけ（じゅくご は字ではなく語のマス）
@@ -562,7 +570,7 @@ function qtypesOf(subject) { return QTYPES.filter(t => t.subject === subject); }
 function qtypeLabel(id) { const t = QTYPES.find(x => x.id === id); return t ? t.label : id; }
 
 /* アプリの版。version.json と必ず同じ値にすること（bump-version.py で両方を書き換える） */
-const APP_VERSION = "2026-09-15-10";
+const APP_VERSION = "2026-09-16-2";
 
 const SET_SIZES = [5, 10, 15, 20, 30, 50, 100];
 const STARS_PER_STAMP = 10;
@@ -605,6 +613,9 @@ function buildAllItems() {
     out.push({ id: "shosu:" + q[1] + q[0] + q[2] + ":dec", subject: "shosu", qtype: "dec",
                op: q[0], a: q[1], b: q[2] });
   });
+  PREF.forEach(p => {
+    out.push({ id: "chizu:" + p.k + ":pref", subject: "chizu", qtype: "pref", p: p });
+  });
   BUNSU.forEach(f => {
     out.push({ id: "bunsu:" + f[0] + "-" + f[1] + ":frac", subject: "bunsu", qtype: "frac",
                n: f[0], d: f[1] });
@@ -616,7 +627,7 @@ const ITEMS = buildAllItems();
 const TRACKED = ITEMS.filter(i => i.track !== false);
 
 // 同じ見出し（同じ漢字）を1セットに何度も出さないためのキー
-function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.w ? item.w.en : item.j ? item.j : item.id); }
+function refKey(item) { return item.subject + ":" + (item.k ? item.k.k : item.w ? item.w.en : item.j ? item.j : item.p ? item.p.k : item.id); }
 function itemsFor(subject, refName) {
   return ITEMS.filter(i => i.subject === subject && refKey(i) === subject + ":" + refName);
 }
@@ -1051,6 +1062,41 @@ function makeQuestion(item, retry) {
   if (item.subject === "shosu") return makeShosuQuestion(q, item);
   if (item.subject === "bunsu") return makeBunsuQuestion(q, item);
   if (item.subject === "tokei") return makeTokeiQuestion(q, item);
+  if (item.subject === "chizu") return makeChizuQuestion(q, item);
+  return q;
+}
+
+/* ---- ちず（都道府県のかたち→なまえ） ---- */
+// 琵琶湖を穴にするため fill-rule="evenodd" が要る
+function prefSVG(d) {
+  return '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+         '<path d="' + d + '" fill="#6ecb8b" stroke="#2e8a52" stroke-width="1.4" ' +
+         'stroke-linejoin="round" fill-rule="evenodd"/></svg>';
+}
+
+function makeChizuQuestion(q, it) {
+  const p = it.p;
+  q.label = "どこの けん？";
+  q.shape = p.d;
+  q.speakJa = "どこか わかるかな？";
+  q.noSpeakButton = true;
+  q.speakAfter = p.s;
+  // ダミーは「同じちほうから1つ」＋「ほかのちほうから2つ」。
+  // 全部を同じちほうにすると、形が似ていて大人でも難しい
+  const same = shuffle(PREF.filter(x => x.k !== p.k && x.r === p.r));
+  const other = shuffle(PREF.filter(x => x.r !== p.r));
+  const picked = [];
+  const used = {};
+  used[p.n] = true;
+  const add = x => {
+    if (!x || used[x.n] || picked.length >= 3) return;
+    used[x.n] = true; picked.push(x);
+  };
+  add(same[0]);
+  other.forEach(add);
+  same.forEach(add);
+  q.choices = shuffle([mkChoice(p.n, "yomi", true)].concat(
+    picked.map(x => mkChoice(x.n, "yomi", false))));
   return q;
 }
 
@@ -1330,6 +1376,7 @@ function makeKanjiQuestion(q, it) {
 function itemCaption(item) {
   if (item.qtype === "juku")   return item.j + "（" + item.y + "）";
   if (item.subject === "tokei") return timeText(item.h, item.m);
+  if (item.subject === "chizu") return item.p.k + "（" + item.p.n + "）";
   if (item.subject === "kanji") {
     return item.k.y + " ／ " + item.k.w[0][0] + "（" + item.k.w[0][1] + "）";
   }
@@ -1350,6 +1397,7 @@ function itemCaption(item) {
 function itemHead(item) {
   if (item.qtype === "juku")    return item.j;
   if (item.subject === "tokei") return "🕐";
+  if (item.subject === "chizu") return "🗾";
   if (item.subject === "kanji") return item.k.k;
   if (item.subject === "kuku")  return item.a + "×" + item.b;
   if (item.subject === "eigo")  return item.w.e;
@@ -1409,6 +1457,13 @@ function fillPrompt(box, q) {
     const em = document.createElement("div");
     em.className = "q-emoji"; em.textContent = q.emoji;
     box.appendChild(em);
+  }
+
+  if (q.shape) {
+    const sp = document.createElement("div");
+    sp.className = "q-shape";
+    sp.innerHTML = prefSVG(q.shape);
+    box.appendChild(sp);
   }
 
   if (q.clock) {
@@ -1670,7 +1725,8 @@ const ZUKAN_TABS = [
   { id: "eigo",  label: "🔤 えいご" },
   { id: "kuku",  label: "✖️ くく" },
   { id: "shosu", label: "🔢 しょうすう" },
-  { id: "bunsu", label: "🥧 ぶんすう" }
+  { id: "bunsu", label: "🥧 ぶんすう" },
+  { id: "chizu", label: "🗾 ちず" }
 ];
 
 function renderZukan() {
@@ -1686,7 +1742,7 @@ function renderZukan() {
   });
   if (zukanTab === "kuku")       renderZukanKuku();
   else if (zukanTab === "eigo")  renderZukanEigo();
-  else if (zukanTab === "shosu" || zukanTab === "bunsu" || zukanTab === "juku") renderZukanList(zukanTab);
+  else if (zukanTab === "shosu" || zukanTab === "bunsu" || zukanTab === "juku" || zukanTab === "chizu") renderZukanList(zukanTab);
   else                           renderZukanKanji();
 }
 
@@ -1704,7 +1760,13 @@ function renderZukanList(key) {
     const b = getBox(i.id), tried = !!store.data.stat[i.id];
     const row = document.createElement("button");
     row.className = "erow " + (b === 3 ? "b3" : b === 2 ? "b2" : tried ? "" : "new");
-    if (key === "juku") {
+    if (key === "chizu") {
+      row.innerHTML =
+        '<span class="ee" style="width:46px">' + prefSVG(i.p.d) + '</span>' +
+        '<span class="jk">' + i.p.k + '</span>' +
+        '<span class="ja">' + i.p.n + '</span>' +
+        '<span class="mk2">' + (b === 3 ? "⭐" : b === 2 ? "🔵" : tried ? "🔁" : "・") + '</span>';
+    } else if (key === "juku") {
       row.innerHTML =
         '<span class="jk">' + i.j + '</span>' +
         '<span class="ja">' + i.y + '</span>' +
@@ -2132,6 +2194,14 @@ function renderSettings() {
   cv.appendChild(up);
   body.appendChild(cv);
 
+  const cs = document.createElement("div");
+  cs.className = "card";
+  cs.innerHTML = "<h3>地図データの出典</h3>" +
+    '<div style="font-size:13px;color:#6b5a46;line-height:1.6">' +
+    "都道府県のかたち：地球地図日本（国土地理院）<br>" +
+    "琵琶湖のかたち：Natural Earth（パブリックドメイン）</div>";
+  body.appendChild(cs);
+
   const c2 = document.createElement("div");
   c2.className = "card";
   c2.innerHTML = "<h3>データ</h3>" +
@@ -2209,6 +2279,6 @@ async function checkVersion() {
 }
 window.addEventListener("load", () => { setTimeout(checkVersion, 800); });
 </script>
-<script src="game.js?v=2026-09-15-10"></script>
+<script src="game.js?v=2026-09-16-2"></script>
 </body>
 </html>
